@@ -508,7 +508,7 @@ fun OilPriceContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "\u6E90: ${state.source}",
+                        text = "\u6E90: Pear API",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )

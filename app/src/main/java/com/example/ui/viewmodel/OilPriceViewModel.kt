@@ -3,9 +3,8 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.RetrofitClient
-import com.example.data.model.OilPriceData
+import com.example.data.model.OilPriceRootResponse
 import com.example.data.model.OilPriceEntry
-import com.example.data.model.OilPriceResponse
 import com.example.data.model.PROVINCES
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -15,23 +14,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-private val PROVINCE_TO_CITY = mapOf(
-    "北京" to "北京", "上海" to "上海", "天津" to "天津", "重庆" to "重庆",
-    "河北" to "石家庄", "山西" to "太原", "辽宁" to "沈阳", "吉林" to "长春",
-    "黑龙江" to "哈尔滨", "江苏" to "南京", "浙江" to "杭州", "安徽" to "合肥",
-    "福建" to "福州", "江西" to "南昌", "山东" to "济南", "河南" to "郑州",
-    "湖北" to "武汉", "湖南" to "长沙", "广东" to "广州", "广西" to "南宁",
-    "海南" to "海口", "四川" to "成都", "贵州" to "贵阳", "云南" to "昆明",
-    "西藏" to "拉萨", "陕西" to "西安", "甘肃" to "兰州", "青海" to "西宁",
-    "宁夏" to "银川", "新疆" to "乌鲁木齐", "内蒙古" to "呼和浩特"
-)
-
 sealed interface OilPriceUiState {
     object Loading : OilPriceUiState
     data class Success(
         val province: String,
         val entries: List<OilPriceEntry>,
-        val source: String
+        val updateTime: String?,
+        val nextUpdateTime: String?
     ) : OilPriceUiState
     data class Error(val message: String) : OilPriceUiState
 }
@@ -70,265 +59,65 @@ class OilPriceViewModel : ViewModel() {
         val province = _selectedProvince.value
 
         fetchJob = viewModelScope.launch {
-            if (tryPrimary(province)) return@launch
-            if (tryBackup(province)) return@launch
-            if (tryIster(province)) return@launch
-            _uiState.value = OilPriceUiState.Error("油价数据获取失败，所有接口均不可用")
+            try {
+                val response = RetrofitClient.oilPriceApi.getOilPrice("get", province)
+                if (response.isSuccessful) {
+                    val body = response.body()?.string()
+                    if (body != null) {
+                        val parsed = parseResponse(body)
+                        if (parsed != null) {
+                            val entries = listOfNotNull(
+                                OilPriceEntry("92\u53F7\u6C7D\u6CB9", parsed.gasoline_92 ?: return@launch),
+                                OilPriceEntry("95\u53F7\u6C7D\u6CB9", parsed.gasoline_95 ?: return@launch),
+                                OilPriceEntry("98\u53F7\u6C7D\u6CB9", parsed.gasoline_98 ?: return@launch),
+                                OilPriceEntry("0\u53F7\u67F4\u6CB9", parsed.diesel_0 ?: return@launch)
+                            ).filter { it.price.isNotBlank() }
+                            if (entries.isNotEmpty()) {
+                                _uiState.value = OilPriceUiState.Success(
+                                    province = province,
+                                    entries = entries,
+                                    updateTime = parsed.updateTime,
+                                    nextUpdateTime = parsed.nextUpdateTime
+                                )
+                                return@launch
+                            }
+                        }
+                    }
+                }
+                _uiState.value = OilPriceUiState.Error(
+                    "\u6CB9\u4EF7\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u540E\u7AEF\u670D\u52A1"
+                )
+            } catch (e: Exception) {
+                _uiState.value = OilPriceUiState.Error(
+                    "\u6CB9\u4EF7\u63A5\u53E3\u5F02\u5E38: ${e.localizedMessage ?: e.message ?: "\u672A\u77E5\u9519\u8BEF"}"
+                )
+            }
         }
     }
 
-    private suspend fun tryPrimary(province: String): Boolean {
-        return try {
-            val response = RetrofitClient.oilPriceApi.getOilPrice(province)
-            if (response.isSuccessful) {
-                val body = response.body()?.string()
-                if (body != null) {
-                    val parsed = parsePrimaryResponse(body, province)
-                    if (parsed != null) {
-                        _uiState.value = OilPriceUiState.Success(
-                            province = province,
-                            entries = parsed,
-                            source = "api.qqsuu.cn"
-                        )
-                        return true
-                    }
-                }
-            }
-            false
-        } catch (_: Exception) { false }
-    }
+    private data class ParsedOilPrice(
+        val gasoline_92: String?,
+        val gasoline_95: String?,
+        val gasoline_98: String?,
+        val diesel_0: String?,
+        val updateTime: String?,
+        val nextUpdateTime: String?
+    )
 
-    private suspend fun tryBackup(province: String): Boolean {
+    private fun parseResponse(body: String): ParsedOilPrice? {
         return try {
-            val response = RetrofitClient.oilPriceBackupApi.getOilPriceBackup(province)
-            if (response.isSuccessful) {
-                val body = response.body()?.string()
-                if (body != null) {
-                    val parsed = parseBackupResponse(body, province)
-                    if (parsed != null) {
-                        _uiState.value = OilPriceUiState.Success(
-                            province = province,
-                            entries = parsed,
-                            source = "v.api.aa1.cn"
-                        )
-                        return true
-                    }
-                }
-            }
-            false
-        } catch (_: Exception) { false }
-    }
-
-    private suspend fun tryIster(province: String): Boolean {
-        val city = PROVINCE_TO_CITY[province] ?: province
-        return try {
-            val response = RetrofitClient.oilPriceIsterApi.getOilPriceIster(
-                token = "CDAgWQhHJGzBiDLCsfdivemXqArPUNdL",
-                keyword = city
+            val adapter = moshi.adapter(OilPriceRootResponse::class.java)
+            val root = adapter.fromJson(body)
+            if (root?.code != 200) return null
+            val prov = root.data?.province ?: return null
+            ParsedOilPrice(
+                gasoline_92 = prov.gasoline_92,
+                gasoline_95 = prov.gasoline_95,
+                gasoline_98 = prov.gasoline_98,
+                diesel_0 = prov.diesel_0,
+                updateTime = root.data?.time,
+                nextUpdateTime = root.data?.next_update_time
             )
-            if (response.isSuccessful) {
-                val body = response.body()?.string()
-                if (body != null) {
-                    val parsed = parseIsterResponse(body, province)
-                    if (parsed != null) {
-                        _uiState.value = OilPriceUiState.Success(
-                            province = province,
-                            entries = parsed,
-                            source = "api.istero.com"
-                        )
-                        return true
-                    }
-                }
-            }
-            false
-        } catch (_: Exception) { false }
-    }
-
-    private fun parsePrimaryResponse(body: String, province: String): List<OilPriceEntry>? {
-        return try {
-            val adapter = moshi.adapter(OilPriceResponse::class.java)
-            val response = adapter.fromJson(body)
-            val data = response?.data ?: return null
-            dataToEntries(data)
-        } catch (_: Exception) {
-            parseFallbackJson(body, province)
-        }
-    }
-
-    private fun parseBackupResponse(body: String, province: String): List<OilPriceEntry>? {
-        return try {
-            val root = org.json.JSONObject(body)
-            val data = root.optJSONObject("data") ?: root.optJSONObject("result") ?: return try {
-                val items = mutableListOf<OilPriceEntry>()
-                val keys = root.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    val v = root.optString(k)
-                    if (k.contains("号") || k.contains("柴油") || k.contains("汽油")) {
-                        items.add(OilPriceEntry(label = k, price = v))
-                    }
-                }
-                if (items.isEmpty()) null else items
-            } catch (_: Exception) { null }
-
-            if (data != null) {
-                val items = mutableListOf<OilPriceEntry>()
-                val keys = data.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    val v = data.optString(k)
-                    if (k.contains("号") || k.contains("柴油") || k.contains("汽油") || k == "92" || k == "95" || k == "98" || k == "0") {
-                        items.add(OilPriceEntry(label = k, price = v))
-                    }
-                }
-                if (items.isNotEmpty()) items else null
-            } else null
         } catch (_: Exception) { null }
-    }
-
-    private fun parseIsterResponse(body: String, province: String): List<OilPriceEntry>? {
-        return try {
-            val root = org.json.JSONObject(body)
-            val items = mutableListOf<OilPriceEntry>()
-            val keys = root.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                val v = root.optString(k)
-                if (k.contains("号") || k.contains("柴油") || k.contains("汽油") || k == "92" || k == "95" || k == "98" || k == "0") {
-                    items.add(OilPriceEntry(label = k, price = v))
-                }
-            }
-            if (items.isEmpty()) {
-                val code = root.optString("code")
-                val data = root.optJSONObject("data") ?: root.optJSONArray("data")
-                if (data is org.json.JSONObject) {
-                    val dataKeys = data.keys()
-                    while (dataKeys.hasNext()) {
-                        val k = dataKeys.next()
-                        val v = data.optString(k)
-                        if (k.contains("号") || k.contains("柴油") || k.contains("汽油") || k == "92" || k == "95" || k == "98" || k == "0") {
-                            items.add(OilPriceEntry(label = k, price = v))
-                        }
-                    }
-                } else if (data is org.json.JSONArray) {
-                    for (i in 0 until data.length()) {
-                        val obj = data.optJSONObject(i)
-                        if (obj != null) {
-                            val label = obj.optString("name", obj.optString("label", obj.optString("oil_name", "")))
-                            val price = obj.optString("price", obj.optString("value", obj.optString("oil_price", "")))
-                            if (label.isNotBlank() && price.isNotBlank()) {
-                                items.add(OilPriceEntry(label = label, price = price))
-                            }
-                        }
-                    }
-                }
-            }
-            if (items.isNotEmpty()) items else null
-        } catch (_: Exception) { null }
-    }
-
-    private fun parseFallbackJson(body: String, province: String): List<OilPriceEntry>? {
-        return try {
-            val root = org.json.JSONObject(body)
-            val items = mutableListOf<OilPriceEntry>()
-            val keys = root.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                val v = root.optString(k)
-                if (k.contains("号") || k.contains("柴油") || k.contains("汽油") || k == "92" || k == "95" || k == "98" || k == "0") {
-                    items.add(OilPriceEntry(label = k, price = v))
-                }
-            }
-            if (items.isNotEmpty()) items else null
-        } catch (_: Exception) { null }
-    }
-
-    private fun tryParseAnyText(body: String): List<OilPriceEntry>? {
-        val items = mutableListOf<OilPriceEntry>()
-        try {
-            if (body.startsWith("{")) {
-                val root = org.json.JSONObject(body)
-                items.addAll(extractOilFromAnyDepth(root))
-            } else if (body.startsWith("[")) {
-                val arr = org.json.JSONArray(body)
-                for (i in 0 until arr.length()) {
-                    val obj = arr.optJSONObject(i)
-                    if (obj != null) items.addAll(extractOilFromAnyDepth(obj))
-                }
-            }
-            if (items.isNotEmpty()) return items
-        } catch (_: Exception) {}
-
-        val oilPattern = Regex("(?i)((?:92|95|98|0|-10|-20)\\s*(?:号)?\\s*(?:汽油|柴油|乙醇)?)\\s*[:：]?\\s*(\\d+\\.?\\d*)")
-        val matches = oilPattern.findAll(body)
-        for (m in matches) {
-            items.add(OilPriceEntry(label = m.groupValues[1].trim(), price = m.groupValues[2]))
-        }
-        if (items.isNotEmpty()) return items
-
-        val genericPattern = Regex("(?i)((?:汽油|柴油|乙醇|92|95|98|0号|油价|价格))\\s*[:：]?\\s*(\\d+\\.?\\d*)")
-        val genericMatches = genericPattern.findAll(body)
-        for (m in genericMatches) {
-            items.add(OilPriceEntry(label = m.groupValues[1].trim(), price = m.groupValues[2]))
-        }
-        return if (items.isNotEmpty()) items else null
-    }
-
-    private fun extractOilFromAnyDepth(obj: org.json.JSONObject, depth: Int = 0): List<OilPriceEntry> {
-        val items = mutableListOf<OilPriceEntry>()
-        if (depth > 10) return items
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val k = keys.next()
-            val v = obj.opt(k)
-            when (v) {
-                is org.json.JSONObject -> items.addAll(extractOilFromAnyDepth(v, depth + 1))
-                is org.json.JSONArray -> {
-                    for (i in 0 until v.length()) {
-                        val e = v.optJSONObject(i)
-                        if (e != null) items.addAll(extractOilFromAnyDepth(e, depth + 1))
-                        else {
-                            val sv = v.optString(i)
-                            if (sv.isNotBlank()) {
-                                items.add(OilPriceEntry(label = "", price = sv))
-                            }
-                        }
-                    }
-                }
-                else -> {
-                    val sv = obj.optString(k, "")
-                    if ((k.contains("号") || k.contains("柴油") || k.contains("汽油") || k == "92" || k == "95" || k == "98" || k == "0") && sv.isNotBlank()) {
-                        items.add(OilPriceEntry(label = k, price = sv))
-                    }
-                }
-            }
-        }
-        return items
-    }
-
-    private fun tryAllParsers(body: String, province: String): List<OilPriceEntry>? {
-        return parsePrimaryResponse(body, province)
-            ?: parseBackupResponse(body, province)
-            ?: parseIsterResponse(body, province)
-            ?: tryParseAnyText(body)
-    }
-
-    private fun dataToEntries(data: OilPriceData): List<OilPriceEntry> {
-        val map = linkedMapOf(
-            "92号汽油" to data.`92`,
-            "92号乙醇" to data.`92h`,
-            "95号汽油" to data.`95`,
-            "95号乙醇" to data.`95h`,
-            "98号汽油" to data.`98`,
-            "98号乙醇" to data.`98h`,
-            "0号柴油" to data.`0`,
-            "0号乙醇" to data.`0h`,
-            "-10号柴油" to data.`-10`,
-            "-10号乙醇" to data.`-10h`,
-            "-20号柴油" to data.`-20`,
-            "-20号乙醇" to data.`-20h`
-        )
-        return map.filterValues { it != null && it.isNotBlank() }
-            .map { (label, price) -> OilPriceEntry(label = label, price = price!!) }
     }
 }

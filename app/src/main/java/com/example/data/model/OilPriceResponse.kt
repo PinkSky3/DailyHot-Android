@@ -1,26 +1,28 @@
 package com.example.data.model
 
-data class OilPriceResponse(
+data class OilPriceRootResponse(
     val code: Int? = null,
-    val data: OilPriceData? = null,
-    val msg: String? = null
+    val msg: String? = null,
+    val data: OilPriceDataResponse? = null
 )
 
-data class OilPriceData(
-    val province: String? = null,
-    val name: String? = null,
-    val `92`: String? = null,
-    val `92h`: String? = null,
-    val `95`: String? = null,
-    val `95h`: String? = null,
-    val `98`: String? = null,
-    val `98h`: String? = null,
-    val `0`: String? = null,
-    val `0h`: String? = null,
-    val `-10`: String? = null,
-    val `-10h`: String? = null,
-    val `-20`: String? = null,
-    val `-20h`: String? = null
+data class OilPriceDataResponse(
+    val time: String? = null,
+    val next_update_time: String? = null,
+    val province: OilPriceProvince? = null
+)
+
+data class OilPriceProvince(
+    val pri_name: String? = null,
+    val gasoline_92: String? = null,
+    val gasoline_95: String? = null,
+    val gasoline_98: String? = null,
+    val diesel_0: String? = null
+)
+
+data class OilPriceEntry(
+    val label: String,
+    val price: String
 )
 
 val PROVINCES = listOf(
@@ -32,9 +34,4 @@ val PROVINCES = listOf(
     "四川", "贵州", "云南", "西藏",
     "陕西", "甘肃", "青海", "宁夏", "新疆",
     "内蒙古"
-)
-
-data class OilPriceEntry(
-    val label: String,
-    val price: String
 )
