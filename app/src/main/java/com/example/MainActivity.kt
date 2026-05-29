@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.DailyHotDashboard
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.HotSearchViewModel
+import com.example.ui.viewmodel.OilPriceViewModel
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,9 +18,11 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
-        val viewModel: HotSearchViewModel = viewModel()
+        val hotViewModel: HotSearchViewModel = viewModel()
+        val oilViewModel: OilPriceViewModel = viewModel()
         DailyHotDashboard(
-          viewModel = viewModel,
+          hotViewModel = hotViewModel,
+          oilViewModel = oilViewModel,
           modifier = Modifier.fillMaxSize()
         )
       }

@@ -53,17 +53,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CarCrash
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Launch
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -107,19 +113,33 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.HotPlatform
 import com.example.data.model.HotSearchItem
+import com.example.data.model.OilPriceEntry
+import com.example.data.model.PROVINCES
+import com.example.ui.viewmodel.HotSearchCategory
 import com.example.ui.viewmodel.HotSearchViewModel
+import com.example.ui.viewmodel.OilPriceUiState
+import com.example.ui.viewmodel.OilPriceViewModel
 import com.example.ui.viewmodel.UiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+enum class DashboardMode {
+    HOT_SEARCH, OIL_PRICE
+}
+
 @Composable
 fun DailyHotDashboard(
-    viewModel: HotSearchViewModel,
+    hotViewModel: HotSearchViewModel,
+    oilViewModel: OilPriceViewModel,
     modifier: Modifier = Modifier
 ) {
-    val activePlatform by viewModel.activePlatform.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val activePlatform by hotViewModel.activePlatform.collectAsState()
+    val searchQuery by hotViewModel.searchQuery.collectAsState()
+    val uiState by hotViewModel.uiState.collectAsState()
+    val activeCategory by hotViewModel.activeCategory.collectAsState()
+    val oilState by oilViewModel.uiState.collectAsState()
+    val selectedProvince by oilViewModel.selectedProvince.collectAsState()
+    var mode by remember { mutableStateOf(DashboardMode.HOT_SEARCH) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -146,14 +166,13 @@ fun DailyHotDashboard(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.navigationBars // Ensure edge-to-edge
+        contentWindowInsets = WindowInsets.navigationBars
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = innerPadding.calculateBottomPadding())
                 .drawBehind {
-                    // Soft radiant dashboard glow
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
@@ -171,71 +190,91 @@ fun DailyHotDashboard(
                     .fillMaxSize()
                     .statusBarsPadding()
             ) {
-                // 1. Beautiful Header Area with Branding Glow
                 HeaderSection(
                     activePlatform = activePlatform,
+                    mode = mode,
+                    onModeChange = { mode = it },
                     onRefresh = {
                         isRotating = true
-                        viewModel.refreshActivePlatform()
+                        if (mode == DashboardMode.HOT_SEARCH) {
+                            hotViewModel.refreshActivePlatform()
+                        } else {
+                            oilViewModel.refresh()
+                        }
                     },
                     rotationAngle = rotationAngle
                 )
 
-                // 2. Horizontal platforms bar
-                PlatformsBar(
-                    activePlatform = activePlatform,
-                    onSelected = { viewModel.selectPlatform(it) }
-                )
+                if (mode == DashboardMode.HOT_SEARCH) {
+                    PlatformsBar(
+                        activePlatform = activePlatform,
+                        onSelected = { hotViewModel.selectPlatform(it) }
+                    )
 
-                // 3. Dynamic Search Input Section
-                SearchSection(
-                    query = searchQuery,
-                    onQueryChanged = { viewModel.updateSearchQuery(it) },
-                    platform = activePlatform
-                )
+                    SearchSection(
+                        query = searchQuery,
+                        onQueryChanged = { hotViewModel.updateSearchQuery(it) },
+                        platform = activePlatform
+                    )
 
-                // 4. Content states
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    when (val state = uiState) {
-                        is UiState.Loading -> {
-                            LoadingStateView(platform = activePlatform)
-                        }
-                        is UiState.Success -> {
-                            SuccessStateView(
-                                platform = activePlatform,
-                                items = state.items,
-                                updateTime = state.updateTime,
-                                onItemClicked = { item ->
-                                    // Try to open with in-app native WebView preview
-                                    if (item.url != null) {
-                                        previewUrl = item.url
-                                        previewTitle = item.title ?: "热搜详情"
-                                    }
-                                },
-                                onCopyItem = { item ->
-                                    copyToClipboard(context, (item.title ?: "暂无标题") + " " + (item.url ?: ""))
-                                },
-                                onShareItem = { item ->
-                                    shareText(context, "【聚合热搜・${activePlatform.displayName}】${item.title ?: "暂无标题"}：${item.url ?: ""}")
-                                }
-                            )
-                        }
-                        is UiState.Error -> {
-                            ErrorStateView(
-                                message = state.message,
-                                onRetry = { viewModel.refreshActivePlatform() },
-                                platform = activePlatform
+                    if (uiState is UiState.Success) {
+                        val successState = uiState as UiState.Success
+                        if (successState.categories.isNotEmpty()) {
+                            CategoriesBar(
+                                categories = successState.categories,
+                                activeCategory = successState.activeCategory,
+                                onSelected = { hotViewModel.selectCategory(it) }
                             )
                         }
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        when (val state = uiState) {
+                            is UiState.Loading -> {
+                                LoadingStateView(platform = activePlatform)
+                            }
+                            is UiState.Success -> {
+                                SuccessStateView(
+                                    platform = activePlatform,
+                                    items = state.items,
+                                    updateTime = state.updateTime,
+                                    onItemClicked = { item ->
+                                        if (item.url != null) {
+                                            previewUrl = item.url
+                                            previewTitle = item.title ?: "\u70ED\u641C\u8BE6\u60C5"
+                                        }
+                                    },
+                                    onCopyItem = { item ->
+                                        copyToClipboard(context, (item.title ?: "\u6682\u65E0\u6807\u9898") + " " + (item.url ?: ""))
+                                    },
+                                    onShareItem = { item ->
+                                        shareText(context, "\u3010\u805A\u5408\u70ED\u641C\u00B7${activePlatform.displayName}\u3011${item.title ?: "\u6682\u65E0\u6807\u9898"}\uFF1A${item.url ?: ""}")
+                                    }
+                                )
+                            }
+                            is UiState.Error -> {
+                                ErrorStateView(
+                                    message = state.message,
+                                    onRetry = { hotViewModel.refreshActivePlatform() },
+                                    platform = activePlatform
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    OilPriceContent(
+                        oilState = oilState,
+                        selectedProvince = selectedProvince,
+                        onProvinceSelected = { oilViewModel.selectProvince(it) },
+                        onRefresh = { oilViewModel.refresh() }
+                    )
                 }
             }
 
-            // Beautiful Full-height sliding WebView overlay
             AnimatedVisibility(
                 visible = previewUrl != null,
                 enter = slideInVertically(
@@ -250,7 +289,7 @@ fun DailyHotDashboard(
                 if (previewUrl != null) {
                     InAppBrowserPreview(
                         url = previewUrl!!,
-                        title = previewTitle ?: "热搜详情",
+                        title = previewTitle ?: "\u70ED\u641C\u8BE6\u60C5",
                         brandColor = activePlatform.brandColor,
                         onClose = {
                             previewUrl = null
@@ -266,6 +305,8 @@ fun DailyHotDashboard(
 @Composable
 fun HeaderSection(
     activePlatform: HotPlatform,
+    mode: DashboardMode,
+    onModeChange: (DashboardMode) -> Unit,
     onRefresh: () -> Unit,
     rotationAngle: Float,
     modifier: Modifier = Modifier
@@ -280,7 +321,7 @@ fun HeaderSection(
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "聚合热搜",
+                    text = if (mode == DashboardMode.HOT_SEARCH) "\u805A\u5408\u70ED\u641C" else "\u5B9E\u65F6\u6CB9\u4EF7",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp
@@ -291,17 +332,17 @@ fun HeaderSection(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(activePlatform.brandColor.copy(alpha = 0.15f))
+                        .background(if (mode == DashboardMode.HOT_SEARCH) activePlatform.brandColor.copy(alpha = 0.15f) else Color(0xFFFF6B35).copy(alpha = 0.15f))
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = activePlatform.infoEmoji,
+                        text = if (mode == DashboardMode.HOT_SEARCH) activePlatform.infoEmoji else "\u26FD",
                         fontSize = 12.sp
                     )
                 }
             }
             Text(
-                text = "实时聚合国内外多平台潮流热点数据",
+                text = if (mode == DashboardMode.HOT_SEARCH) "\u5B9E\u65F6\u805A\u5408\u56FD\u5185\u5916\u591A\u5E73\u53F0\u6F6E\u6D41\u70ED\u70B9\u6570\u636E" else "\u67E5\u8BE2\u5404\u7701\u4EFD\u5B9E\u65F6\u6CB9\u4EF7\uFF0C\u652F\u6301\u591A\u8282\u70B9\u5907\u7528",
                 style = MaterialTheme.typography.bodySmall.copy(
                     letterSpacing = 0.5.sp
                 ),
@@ -309,26 +350,430 @@ fun HeaderSection(
             )
         }
 
-        // Animated Refresh button
-        Box(
-            modifier = Modifier
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    shape = CircleShape
-                )
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .clickable { onRefresh() }
-                .padding(10.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Refresh,
-                contentDescription = "刷新",
-                tint = activePlatform.brandColor,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ModeToggle(
+                mode = mode,
+                onModeChange = onModeChange
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
                 modifier = Modifier
-                    .size(20.dp)
-                    .rotate(rotationAngle)
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        shape = CircleShape
+                    )
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable { onRefresh() }
+                    .padding(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "\u5237\u65B0",
+                    tint = if (mode == DashboardMode.HOT_SEARCH) activePlatform.brandColor else Color(0xFFFF6B35),
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(rotationAngle)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ModeToggle(
+    mode: DashboardMode,
+    onModeChange: (DashboardMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val hotBg by animateColorAsState(
+        targetValue = if (mode == DashboardMode.HOT_SEARCH) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = tween(durationMillis = 200)
+    )
+    val oilBg by animateColorAsState(
+        targetValue = if (mode == DashboardMode.OIL_PRICE) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = tween(durationMillis = 200)
+    )
+    val hotContent by animateColorAsState(
+        targetValue = if (mode == DashboardMode.HOT_SEARCH) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 200)
+    )
+    val oilContent by animateColorAsState(
+        targetValue = if (mode == DashboardMode.OIL_PRICE) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 200)
+    )
+
+    Surface(
+        modifier = modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(10.dp)),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    ) {
+        Row {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(hotBg)
+                    .clickable { onModeChange(DashboardMode.HOT_SEARCH) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u70ED\u641C",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = hotContent
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(oilBg)
+                    .clickable { onModeChange(DashboardMode.OIL_PRICE) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u6CB9\u4EF7",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = oilContent
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CategoriesBar(
+    categories: List<HotSearchCategory>,
+    activeCategory: HotSearchCategory,
+    onSelected: (HotSearchCategory) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(categories.size) { index ->
+            val cat = categories[index]
+            val isSelected = cat == activeCategory
+            val chipBg by animateColorAsState(
+                targetValue = if (isSelected) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                animationSpec = tween(durationMillis = 200)
+            )
+            val chipContentColor by animateColorAsState(
+                targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(durationMillis = 200)
+            )
+
+            Surface(
+                modifier = Modifier
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSelected(cat) },
+                color = chipBg,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = cat.displayName,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        color = chipContentColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OilPriceContent(
+    oilState: OilPriceUiState,
+    selectedProvince: String,
+    onProvinceSelected: (String) -> Unit,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+
+        ProvinceSelector(
+            selectedProvince = selectedProvince,
+            onProvinceSelected = onProvinceSelected
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        when (val state = oilState) {
+            is OilPriceUiState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            color = Color(0xFFFF6B35),
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(46.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "\u6B63\u5728\u67E5\u8BE2 ${selectedProvince} \u5B9E\u65F6\u6CB9\u4EF7...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
+            is OilPriceUiState.Success -> {
+                val oilColor = Color(0xFFFF6B35)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "\u6E90: ${state.source}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "\u5237\u65B0",
+                            tint = oilColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocalGasStation,
+                                    contentDescription = null,
+                                    tint = oilColor,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "${selectedProvince}\u7701\u5B9E\u65F6\u6CB9\u4EF7",
+                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    itemsIndexed(
+                        items = state.entries,
+                        key = { _, entry -> entry.label }
+                    ) { _, entry ->
+                        OilPriceCard(entry = entry, accentColor = oilColor)
+                    }
+                }
+            }
+            is OilPriceUiState.Error -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFFF6B35),
+                            modifier = Modifier.size(54.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Surface(
+                            modifier = Modifier
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onRefresh() },
+                            color = Color(0xFFFF6B35),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "\u91CD\u65B0\u52A0\u8F7D",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProvinceSelector(
+    selectedProvince: String,
+    onProvinceSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = "\u9009\u62E9\u7701\u4EFD",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { expanded = true },
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = Color(0xFFFF6B35),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = selectedProvince,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Text(
+                    text = "\u25BC",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .height(300.dp)
+        ) {
+            PROVINCES.forEach { province ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = province,
+                            fontWeight = if (province == selectedProvince) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    onClick = {
+                        onProvinceSelected(province)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OilPriceCard(
+    entry: OilPriceEntry,
+    accentColor: Color = Color(0xFFFF6B35),
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(accentColor)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = entry.label,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = "\uFFE5${entry.price} /L",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                color = accentColor
             )
         }
     }
@@ -351,7 +796,6 @@ fun PlatformsBar(
             val platform = HotPlatform.values()[index]
             val isSelected = activePlatform == platform
             
-            // Dynamic anim color transitions
             val chipBg by animateColorAsState(
                 targetValue = if (isSelected) platform.brandColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                 animationSpec = tween(durationMillis = 200)
@@ -359,9 +803,6 @@ fun PlatformsBar(
             val chipContentColor by animateColorAsState(
                 targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 animationSpec = tween(durationMillis = 200)
-            )
-            val shadowElevation by animateFloatAsState(
-                targetValue = if (isSelected) 6f else 0f
             )
 
             Surface(
@@ -410,7 +851,7 @@ fun SearchSection(
             .padding(horizontal = 18.dp, vertical = 8.dp),
         placeholder = {
             Text(
-                text = "正在过滤 ${platform.displayName} 的热度趋势...",
+                text = "\u6B63\u5728\u8FC7\u6EE4 ${platform.displayName} \u7684\u70ED\u5EA6\u8D8B\u52BF...",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
@@ -427,7 +868,7 @@ fun SearchSection(
                 IconButton(onClick = { onQueryChanged("") }) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "清除搜索",
+                        contentDescription = "\u6E05\u9664\u641C\u7D22",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -461,12 +902,12 @@ fun LoadingStateView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "正在同步 ${platform.displayName} 的实时数据...",
+            text = "\u6B63\u5728\u540C\u6B65 ${platform.displayName} \u7684\u5B9E\u65F6\u6570\u636E...",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
         Text(
-            text = "从 dailyhotapi 节点拉取中",
+            text = "\u4ECE dailyhotapi \u8282\u70B9\u62C9\u53D6\u4E2D",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
@@ -487,7 +928,6 @@ fun SuccessStateView(
         EmptyStateView()
     } else {
         Column(modifier = modifier.fillMaxSize()) {
-            // Little info strip for stats
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -496,12 +936,12 @@ fun SuccessStateView(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "共同捕捉 ${items.size} 条热搜动态",
+                    text = "\u5171\u540C\u6355\u6349 ${items.size} \u6761\u70ED\u641C\u52A8\u6001",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
                 Text(
-                    text = "更新时间: ${updateTime ?: "刚刚"}",
+                    text = "\u66F4\u65B0\u65F6\u95F4: ${updateTime ?: "\u521A\u521A"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
@@ -541,11 +981,10 @@ fun TrendItemCard(
     onShare: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Top 3 gets special premium borders
     val rankColor = when (rank) {
-        1 -> Color(0xFFFFD700) // Gold
-        2 -> Color(0xFFC0C0C0) // Silver
-        3 -> Color(0xFFCD7F32) // Bronze
+        1 -> Color(0xFFFFD700)
+        2 -> Color(0xFFC0C0C0)
+        3 -> Color(0xFFCD7F32)
         else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     }
 
@@ -571,7 +1010,6 @@ fun TrendItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top
             ) {
-                // Large styled rank badge with custom gold/silver/bronze textures
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -603,12 +1041,11 @@ fun TrendItemCard(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Detail content column
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = item.title ?: "暂无标题",
+                        text = item.title ?: "\u6682\u65E0\u6807\u9898",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             lineHeight = 22.sp
@@ -618,7 +1055,6 @@ fun TrendItemCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    // Render cover media if available with Coil
                     val coverMedia = resolveCoverUrl(platform, item.cover ?: item.pic)
                     if (!coverMedia.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -627,20 +1063,19 @@ fun TrendItemCard(
                                 .data(coverMedia)
                                 .crossfade(true)
                                 .build(),
-                            contentDescription = "热点封面图",
+                            contentDescription = "\u70ED\u70B9\u5C01\u9762\u56FE",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(130.dp)
                                 .clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Crop,
-                            error = painterResource(id = android.R.drawable.stat_notify_error), // failsafe fallback
+                            error = painterResource(id = android.R.drawable.stat_notify_error),
                             fallback = painterResource(id = android.R.drawable.stat_notify_error)
                         )
                     }
 
-                    // Render brief description snippet (truncating neatly)
                     val displayDesc = item.desc?.trim()
-                    if (!displayDesc.isNullOrBlank() && displayDesc != "-" && displayDesc != "该视频暂无简介") {
+                    if (!displayDesc.isNullOrBlank() && displayDesc != "-" && displayDesc != "\u8BE5\u89C6\u9891\u6682\u65E0\u7B80\u4ECB") {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = displayDesc,
@@ -651,14 +1086,12 @@ fun TrendItemCard(
                         )
                     }
 
-                    // Platforms custom footer tags
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Brand and Author Row
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val authorLabel = item.author?.trim()
                             if (!authorLabel.isNullOrBlank()) {
@@ -679,12 +1112,11 @@ fun TrendItemCard(
                             }
                         }
 
-                        // Hotness metric widget
                         if (item.hot != null && item.hot.value.isNotBlank()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = Icons.Default.Whatshot,
-                                    contentDescription = "热度",
+                                    contentDescription = "\u70ED\u5EA6",
                                     tint = platform.brandColor,
                                     modifier = Modifier.size(14.dp)
                                 )
@@ -700,7 +1132,6 @@ fun TrendItemCard(
                 }
             }
 
-            // Expanded panel utility buttons
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -712,14 +1143,14 @@ fun TrendItemCard(
                     IconButton(onClick = onCopy) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制链接",
+                            contentDescription = "\u590D\u5236\u94FE\u63A5",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = onShare) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "分享热点",
+                            contentDescription = "\u5206\u4EAB\u70ED\u70B9",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -746,12 +1177,12 @@ fun EmptyStateView(
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(
-            text = "没有找到符合条件的热搜",
+            text = "\u6CA1\u6709\u627E\u5230\u7B26\u5408\u6761\u4EF6\u7684\u70ED\u641C",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "尝试修改或清除你的搜索词",
+            text = "\u5C1D\u8BD5\u4FEE\u6539\u6216\u6E05\u9664\u4F60\u7684\u641C\u7D22\u8BCD",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
@@ -774,13 +1205,13 @@ fun ErrorStateView(
     ) {
         Icon(
             imageVector = Icons.Default.Warning,
-            contentDescription = "错误",
+            contentDescription = "\u9519\u8BEF",
             tint = platform.brandColor,
             modifier = Modifier.size(54.dp)
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "抓取遇到异常",
+            text = "\u6293\u53D6\u9047\u5230\u5F02\u5E38",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -813,7 +1244,7 @@ fun ErrorStateView(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "重新加载数据",
+                    text = "\u91CD\u65B0\u52A0\u8F7D\u6570\u636E",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
@@ -839,7 +1270,6 @@ fun InAppBrowserPreview(
         color = MaterialTheme.colorScheme.background
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Elegant in-app browser control bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -851,7 +1281,7 @@ fun InAppBrowserPreview(
                 IconButton(onClick = onClose) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Default.ArrowBack,
-                        contentDescription = "返回",
+                        contentDescription = "\u8FD4\u56DE",
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -877,30 +1307,27 @@ fun InAppBrowserPreview(
                     )
                 }
 
-                // Copy Link action
                 IconButton(onClick = {
                     copyToClipboard(context, url)
                 }) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "复制链接",
+                        contentDescription = "\u590D\u5236\u94FE\u63A5",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                // Open in System browser action
                 IconButton(onClick = {
                     openInBrowser(context, url)
                 }) {
                     Icon(
                         imageVector = Icons.Default.Language,
-                        contentDescription = "系统默认浏览器打开",
+                        contentDescription = "\u7CFB\u7EDF\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6253\u5F00",
                         tint = brandColor
                     )
                 }
             }
 
-            // Real-time smooth loading progress bar
             if (webProgress > 0f && webProgress < 1f) {
                 LinearProgressIndicator(
                     progress = { webProgress },
@@ -912,7 +1339,6 @@ fun InAppBrowserPreview(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             }
 
-            // Safe in-app WebView integration supporting client scripts & redirects
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
@@ -931,7 +1357,6 @@ fun InAppBrowserPreview(
                                 request: WebResourceRequest?
                             ): Boolean {
                                 val requestUrl = request?.url?.toString() ?: ""
-                                // Only load standard HTTP web requests in WebView. Avoid launching other apps directly
                                 return if (requestUrl.startsWith("http://") || requestUrl.startsWith("https://")) {
                                     false
                                 } else {
@@ -939,7 +1364,6 @@ fun InAppBrowserPreview(
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(requestUrl))
                                         ctx.startActivity(intent)
                                     } catch (e: Exception) {
-                                        // Ignore schemes not supported
                                     }
                                     true
                                 }
@@ -963,10 +1387,6 @@ fun InAppBrowserPreview(
     }
 }
 
-// ------------------------------------
-// Utility Functions
-// ------------------------------------
-
 fun resolveCoverUrl(platform: HotPlatform, rawUrl: String?): String? {
     if (rawUrl.isNullOrBlank()) return null
     if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) return rawUrl
@@ -983,7 +1403,7 @@ fun formatHotNumber(hotStr: String): String {
         val num = hotStr.toDouble()
         when {
             num >= 1_000_000 -> String.format(Locale.getDefault(), "%.1fM", num / 1_000_000)
-            num >= 10_000 -> String.format(Locale.getDefault(), "%.1f万", num / 10_000)
+            num >= 10_000 -> String.format(Locale.getDefault(), "%.1f\u4E07", num / 10_000)
             num >= 1000 -> String.format(Locale.getDefault(), "%.1fk", num / 1000)
             else -> hotStr
         }
@@ -997,9 +1417,9 @@ fun copyToClipboard(context: Context, text: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val clip = android.content.ClipData.newPlainText("hot_search_link", text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "链接与标题已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "\u94FE\u63A5\u4E0E\u6807\u9898\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F", Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
-        Toast.makeText(context, "复制失败", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "\u590D\u5236\u5931\u8D25", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -1009,9 +1429,9 @@ fun shareText(context: Context, text: String) {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
         }
-        context.startActivity(Intent.createChooser(intent, "发送热搜至"))
+        context.startActivity(Intent.createChooser(intent, "\u53D1\u9001\u70ED\u641C\u81F3"))
     } catch (e: Exception) {
-        Toast.makeText(context, "分享失败", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "\u5206\u4EAB\u5931\u8D25", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -1021,6 +1441,6 @@ fun openInBrowser(context: Context, url: String) {
         val intent = Intent(Intent.ACTION_VIEW, webpage)
         context.startActivity(intent)
     } catch (e: Exception) {
-        Toast.makeText(context, "找不到可以打开浏览器程序的应用", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "\u627E\u4E0D\u5230\u53EF\u4EE5\u6253\u5F00\u6D4F\u89C8\u5668\u7A0B\u5E8F\u7684\u5E94\u7528", Toast.LENGTH_SHORT).show()
     }
 }
