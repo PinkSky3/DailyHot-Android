@@ -119,6 +119,7 @@ class HotSearchViewModel : ViewModel() {
             HotPlatform.WEIBO -> {
                 list.add("https://cn.apihz.cn/api/xinwen/weibo.php?id=88888888&key=88888888")
                 list.add("https://www.haotechs.cn/ljh-wx/api/weiboHot")
+                list.add("https://api.xunjinlu.fun/api/rebang/weibo.php")
             }
             HotPlatform.ZHIHU -> {
                 list.add("https://v.api.aa1.cn/api/zhihu-news/index.php?aa1=xiarou")
