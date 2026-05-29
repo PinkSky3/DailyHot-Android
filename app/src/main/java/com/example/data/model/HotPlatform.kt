@@ -185,10 +185,10 @@ enum class HotPlatform(
     HUPU(
         key = "hupu",
         displayName = "虎扑",
-        subtitle = "热血体育论坛、高热赛事点评与街区热榜",
+        subtitle = "综合社区论坛、高热赛事点评与步行街热榜",
         brandColor = Color(0xFFDF2029),
         infoEmoji = "🏀",
-        category = PlatformCategory.SPORTS
+        category = PlatformCategory.SOCIAL
     ),
     HUXIU(
         key = "huxiu",
@@ -204,7 +204,7 @@ enum class HotPlatform(
         subtitle = "新酷消费电子、前沿数码与科技新潮风向",
         brandColor = Color(0xFFE53935),
         infoEmoji = "📱",
-        category = PlatformCategory.FINANCE
+        category = PlatformCategory.TECH
     ),
     ITHOME(
         key = "ithome",
@@ -220,7 +220,7 @@ enum class HotPlatform(
         subtitle = "Steam及各大游戏平台限免与优惠游戏列表",
         brandColor = Color(0xFFD32F2F),
         infoEmoji = "🎮",
-        category = PlatformCategory.TECH
+        category = PlatformCategory.GAME
     ),
     JIANSHU(
         key = "jianshu",
