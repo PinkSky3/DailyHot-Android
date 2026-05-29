@@ -40,4 +40,5 @@ object RetrofitClient {
 
     val apiService: DailyHotApiService = retrofit.create(DailyHotApiService::class.java)
     val oilPriceApi: OilPriceApiService = oilPriceRetrofit.create(OilPriceApiService::class.java)
+    val news60sApi: News60sApiService = oilPriceRetrofit.create(News60sApiService::class.java)
 }

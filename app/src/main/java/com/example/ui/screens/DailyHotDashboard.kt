@@ -45,6 +45,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -66,7 +68,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -119,18 +124,21 @@ import com.example.data.model.PROVINCES
 import com.example.ui.viewmodel.HotSearchViewModel
 import com.example.ui.viewmodel.OilPriceUiState
 import com.example.ui.viewmodel.OilPriceViewModel
+import com.example.ui.viewmodel.News60sUiState
+import com.example.ui.viewmodel.News60sViewModel
 import com.example.ui.viewmodel.UiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class DashboardMode {
-    HOT_SEARCH, OIL_PRICE
+    NEWS_60S, HOT_SEARCH, OIL_PRICE
 }
 
 @Composable
 fun DailyHotDashboard(
     hotViewModel: HotSearchViewModel,
     oilViewModel: OilPriceViewModel,
+    news60sViewModel: News60sViewModel,
     isDarkTheme: Boolean = false,
     onToggleTheme: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -140,7 +148,8 @@ fun DailyHotDashboard(
     val uiState by hotViewModel.uiState.collectAsState()
     val oilState by oilViewModel.uiState.collectAsState()
     val selectedProvince by oilViewModel.selectedProvince.collectAsState()
-    var mode by remember { mutableStateOf(DashboardMode.HOT_SEARCH) }
+    val news60sState by news60sViewModel.uiState.collectAsState()
+    var mode by remember { mutableStateOf(DashboardMode.NEWS_60S) }
     var selectedPlatformCategory by remember { mutableStateOf(PlatformCategory.ALL) }
 
     val context = LocalContext.current
@@ -200,77 +209,83 @@ fun DailyHotDashboard(
                     onModeChange = { mode = it },
                     onRefresh = {
                         isRotating = true
-                        if (mode == DashboardMode.HOT_SEARCH) {
-                            hotViewModel.refreshActivePlatform()
-                        } else {
-                            oilViewModel.refresh()
+                        when (mode) {
+                            DashboardMode.HOT_SEARCH -> hotViewModel.refreshActivePlatform()
+                            DashboardMode.OIL_PRICE -> oilViewModel.refresh()
+                            DashboardMode.NEWS_60S -> news60sViewModel.refresh()
                         }
                     },
                     rotationAngle = rotationAngle
                 )
 
-                if (mode == DashboardMode.HOT_SEARCH) {
-                    PlatformCategoryBar(
-                        selectedCategory = selectedPlatformCategory,
-                        onSelected = { selectedPlatformCategory = it }
-                    )
+                when (mode) {
+                    DashboardMode.NEWS_60S -> {
+                        News60sContent(news60sState = news60sState, onRefresh = { news60sViewModel.refresh() })
+                    }
+                    DashboardMode.HOT_SEARCH -> {
+                        PlatformCategoryBar(
+                            selectedCategory = selectedPlatformCategory,
+                            onSelected = { selectedPlatformCategory = it }
+                        )
 
-                    PlatformsBar(
-                        activePlatform = activePlatform,
-                        platforms = HotPlatform.platformsByCategory(selectedPlatformCategory),
-                        onSelected = { hotViewModel.selectPlatform(it) }
-                    )
+                        PlatformsBar(
+                            activePlatform = activePlatform,
+                            platforms = HotPlatform.platformsByCategory(selectedPlatformCategory),
+                            onSelected = { hotViewModel.selectPlatform(it) }
+                        )
 
-                    SearchSection(
-                        query = searchQuery,
-                        onQueryChanged = { hotViewModel.updateSearchQuery(it) },
-                        platform = activePlatform
-                    )
+                        SearchSection(
+                            query = searchQuery,
+                            onQueryChanged = { hotViewModel.updateSearchQuery(it) },
+                            platform = activePlatform
+                        )
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
-                        when (val state = uiState) {
-                            is UiState.Loading -> {
-                                LoadingStateView(platform = activePlatform)
-                            }
-                            is UiState.Success -> {
-                                SuccessStateView(
-                                    platform = activePlatform,
-                                    items = state.items,
-                                    updateTime = state.updateTime,
-                                    onItemClicked = { item ->
-                                        if (item.url != null) {
-                                            previewUrl = item.url
-                                            previewTitle = item.title ?: "\u70ED\u641C\u8BE6\u60C5"
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            when (val state = uiState) {
+                                is UiState.Loading -> {
+                                    LoadingStateView(platform = activePlatform)
+                                }
+                                is UiState.Success -> {
+                                    SuccessStateView(
+                                        platform = activePlatform,
+                                        items = state.items,
+                                        updateTime = state.updateTime,
+                                        onItemClicked = { item ->
+                                            if (item.url != null) {
+                                                previewUrl = item.url
+                                                previewTitle = item.title ?: "\u70ED\u641C\u8BE6\u60C5"
+                                            }
+                                        },
+                                        onCopyItem = { item ->
+                                            copyToClipboard(context, (item.title ?: "\u6682\u65E0\u6807\u9898") + " " + (item.url ?: ""))
+                                        },
+                                        onShareItem = { item ->
+                                            shareText(context, "\u3010\u805A\u5408\u70ED\u641C\u00B7${activePlatform.displayName}\u3011${item.title ?: "\u6682\u65E0\u6807\u9898"}\uFF1A${item.url ?: ""}")
                                         }
-                                    },
-                                    onCopyItem = { item ->
-                                        copyToClipboard(context, (item.title ?: "\u6682\u65E0\u6807\u9898") + " " + (item.url ?: ""))
-                                    },
-                                    onShareItem = { item ->
-                                        shareText(context, "\u3010\u805A\u5408\u70ED\u641C\u00B7${activePlatform.displayName}\u3011${item.title ?: "\u6682\u65E0\u6807\u9898"}\uFF1A${item.url ?: ""}")
-                                    }
-                                )
-                            }
-                            is UiState.Error -> {
-                                ErrorStateView(
-                                    message = state.message,
-                                    onRetry = { hotViewModel.refreshActivePlatform() },
-                                    platform = activePlatform
-                                )
+                                    )
+                                }
+                                is UiState.Error -> {
+                                    ErrorStateView(
+                                        message = state.message,
+                                        onRetry = { hotViewModel.refreshActivePlatform() },
+                                        platform = activePlatform
+                                    )
+                                }
                             }
                         }
                     }
-                } else {
-                    OilPriceContent(
-                        oilState = oilState,
-                        selectedProvince = selectedProvince,
-                        onProvinceSelected = { oilViewModel.selectProvince(it) },
-                        onRefresh = { oilViewModel.refresh() }
-                    )
+                    DashboardMode.OIL_PRICE -> {
+                        OilPriceContent(
+                            oilState = oilState,
+                            selectedProvince = selectedProvince,
+                            onProvinceSelected = { oilViewModel.selectProvince(it) },
+                            onRefresh = { oilViewModel.refresh() }
+                        )
+                    }
                 }
             }
 
@@ -322,7 +337,7 @@ fun HeaderSection(
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (mode == DashboardMode.HOT_SEARCH) "\u70ED\u641C\u6CB9\u4EF7" else "\u70ED\u641C\u6CB9\u4EF7",
+                    text = "\u805A\u5408\u70ED\u641C",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp
@@ -333,17 +348,31 @@ fun HeaderSection(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(if (mode == DashboardMode.HOT_SEARCH) activePlatform.brandColor.copy(alpha = 0.15f) else Color(0xFFFF6B35).copy(alpha = 0.15f))
+                        .background(
+                            when (mode) {
+                                DashboardMode.NEWS_60S -> Color(0xFF2196F3).copy(alpha = 0.15f)
+                                DashboardMode.HOT_SEARCH -> activePlatform.brandColor.copy(alpha = 0.15f)
+                                DashboardMode.OIL_PRICE -> Color(0xFFFF6B35).copy(alpha = 0.15f)
+                            }
+                        )
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = if (mode == DashboardMode.HOT_SEARCH) activePlatform.infoEmoji else "\u26FD",
+                        text = when (mode) {
+                            DashboardMode.NEWS_60S -> "\uD83D\uDCF0"
+                            DashboardMode.HOT_SEARCH -> activePlatform.infoEmoji
+                            DashboardMode.OIL_PRICE -> "\u26FD"
+                        },
                         fontSize = 12.sp
                     )
                 }
             }
             Text(
-                text = if (mode == DashboardMode.HOT_SEARCH) "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2" else "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2",
+                text = when (mode) {
+                    DashboardMode.NEWS_60S -> "60\u79D2\u8BFB\u4E16\u754C\u00B7\u6BCF\u65E5\u65B0\u95FB\u5FEB\u62A5"
+                    DashboardMode.HOT_SEARCH -> "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2"
+                    DashboardMode.OIL_PRICE -> "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2"
+                },
                 style = MaterialTheme.typography.bodySmall.copy(
                     letterSpacing = 0.5.sp
                 ),
@@ -382,7 +411,11 @@ fun HeaderSection(
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "\u5237\u65B0",
-                    tint = if (mode == DashboardMode.HOT_SEARCH) activePlatform.brandColor else Color(0xFFFF6B35),
+                    tint = when (mode) {
+                        DashboardMode.NEWS_60S -> Color(0xFF2196F3)
+                        DashboardMode.HOT_SEARCH -> activePlatform.brandColor
+                        DashboardMode.OIL_PRICE -> Color(0xFFFF6B35)
+                    },
                     modifier = Modifier
                         .size(20.dp)
                         .rotate(rotationAngle)
@@ -398,12 +431,20 @@ fun ModeToggle(
     onModeChange: (DashboardMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val news60sBg by animateColorAsState(
+        targetValue = if (mode == DashboardMode.NEWS_60S) Color(0xFF2196F3) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = tween(durationMillis = 200)
+    )
     val hotBg by animateColorAsState(
         targetValue = if (mode == DashboardMode.HOT_SEARCH) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         animationSpec = tween(durationMillis = 200)
     )
     val oilBg by animateColorAsState(
         targetValue = if (mode == DashboardMode.OIL_PRICE) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = tween(durationMillis = 200)
+    )
+    val news60sContent by animateColorAsState(
+        targetValue = if (mode == DashboardMode.NEWS_60S) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(durationMillis = 200)
     )
     val hotContent by animateColorAsState(
@@ -423,6 +464,20 @@ fun ModeToggle(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     ) {
         Row {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(news60sBg)
+                    .clickable { onModeChange(DashboardMode.NEWS_60S) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "60S",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = news60sContent
+                )
+            }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
@@ -613,6 +668,146 @@ fun OilPriceContent(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun News60sContent(
+    news60sState: News60sUiState,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        when (val state = news60sState) {
+            is News60sUiState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF2196F3),
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "60秒读世界加载中...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
+            is News60sUiState.Success -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "源: Pear API",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "\u5237\u65B0",
+                            tint = Color(0xFF2196F3),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    state.newsList.forEachIndexed { index, news ->
+                        News60sCard(index = index + 1, content = news)
+                    }
+                }
+            }
+            is News60sUiState.Error -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFF2196F3),
+                            modifier = Modifier.size(54.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = onRefresh,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                        ) {
+                            Text("\u91CD\u8BD5")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun News60sCard(
+    index: Int,
+    content: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF2196F3).copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = index.toString().padStart(2, '0'),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFF2196F3)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

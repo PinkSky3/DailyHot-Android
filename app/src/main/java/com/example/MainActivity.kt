@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.DailyHotDashboard
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.HotSearchViewModel
+import com.example.ui.viewmodel.News60sViewModel
 import com.example.ui.viewmodel.OilPriceViewModel
 
 class MainActivity : ComponentActivity() {
@@ -25,9 +26,11 @@ class MainActivity : ComponentActivity() {
       MyApplicationTheme(darkTheme = isDarkTheme) {
         val hotViewModel: HotSearchViewModel = viewModel()
         val oilViewModel: OilPriceViewModel = viewModel()
+        val news60sViewModel: News60sViewModel = viewModel()
         DailyHotDashboard(
           hotViewModel = hotViewModel,
           oilViewModel = oilViewModel,
+          news60sViewModel = news60sViewModel,
           isDarkTheme = isDarkTheme,
           onToggleTheme = { isDarkTheme = !isDarkTheme },
           modifier = Modifier.fillMaxSize()
