@@ -128,6 +128,9 @@ class HotSearchViewModel : ViewModel() {
                 list.add("https://api.xma.run/api/tools/bdhot/?type=game")
                 list.add("https://v.api.aa1.cn/api/sougou-baidu/index.php?aa1=xiarou")
             }
+            HotPlatform.NGABBS -> {
+                list.add("https://cn.apihz.cn/api/xinwen/nga.php?id=88888888&key=88888888")
+            }
             else -> {}
         }
 
@@ -154,11 +157,14 @@ class HotSearchViewModel : ViewModel() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        } catch (e: StackOverflowError) {
+            System.err.println("JSON too deeply nested, skipping")
         }
         return items
     }
 
-    private fun findDeepestArray(obj: org.json.JSONObject): org.json.JSONArray? {
+    private fun findDeepestArray(obj: org.json.JSONObject, depth: Int = 0): org.json.JSONArray? {
+        if (depth > 20) return null
         val knownKeys = listOf("data", "list", "result", "news", "hotList", "hot", "items", "routes")
         for (key in knownKeys) {
             if (obj.has(key)) {
@@ -172,7 +178,7 @@ class HotSearchViewModel : ViewModel() {
             val v = obj.get(key)
             if (v is org.json.JSONArray && v.length() > 0) return v
             if (v is org.json.JSONObject) {
-                val inner = findDeepestArray(v)
+                val inner = findDeepestArray(v, depth + 1)
                 if (inner != null) return inner
             }
         }
