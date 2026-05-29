@@ -45,7 +45,7 @@ enum class HotPlatform(
         infoEmoji = "🚩"
     ),
     TIEBA(
-        key = "贴吧",
+        key = "tieba",
         displayName = "贴吧",
         subtitle = "贴吧热议榜、网民兴趣聚集地与名梗出处",
         brandColor = Color(0xFF004BEE),

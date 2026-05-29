@@ -25,20 +25,13 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: '9.3.1'
-        validate-wrappers: false
-
-    - name: Regenerate Gradle Wrapper
-      run: gradle wrapper --gradle-version 9.3.1
+        gradle-version: '8.7'
 
     - name: Accept Android SDK licenses
       run: |
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
 
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -51,7 +44,7 @@ jobs:
       run: touch .env
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace --no-daemon
+      run: gradle assembleDebug --stacktrace --no-daemon
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4

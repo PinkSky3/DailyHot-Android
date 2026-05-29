@@ -8,10 +8,10 @@ interface DailyHotApiService {
     @GET
     suspend fun getHotListWithUrl(
         @retrofit2.http.Url url: String
-    ): HotSearchResponse
+    ): retrofit2.Response<okhttp3.ResponseBody>
 
     @GET("{route}")
     suspend fun getHotList(
         @Path("route") route: String
-    ): HotSearchResponse
+    ): com.example.data.model.HotSearchResponse
 }
