@@ -116,7 +116,6 @@ import com.example.data.model.HotSearchItem
 import com.example.data.model.OilPriceEntry
 import com.example.data.model.PlatformCategory
 import com.example.data.model.PROVINCES
-import com.example.ui.viewmodel.HotSearchCategory
 import com.example.ui.viewmodel.HotSearchViewModel
 import com.example.ui.viewmodel.OilPriceUiState
 import com.example.ui.viewmodel.OilPriceViewModel
@@ -132,6 +131,8 @@ enum class DashboardMode {
 fun DailyHotDashboard(
     hotViewModel: HotSearchViewModel,
     oilViewModel: OilPriceViewModel,
+    isDarkTheme: Boolean = false,
+    onToggleTheme: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val activePlatform by hotViewModel.activePlatform.collectAsState()
@@ -195,6 +196,8 @@ fun DailyHotDashboard(
                 HeaderSection(
                     activePlatform = activePlatform,
                     mode = mode,
+                    isDarkTheme = isDarkTheme,
+                    onToggleTheme = onToggleTheme,
                     onModeChange = { mode = it },
                     onRefresh = {
                         isRotating = true
@@ -216,10 +219,7 @@ fun DailyHotDashboard(
                     PlatformsBar(
                         activePlatform = activePlatform,
                         platforms = HotPlatform.platformsByCategory(selectedPlatformCategory),
-                        onSelected = {
-                            hotViewModel.selectPlatform(it)
-                            selectedPlatformCategory = PlatformCategory.ALL
-                        }
+                        onSelected = { hotViewModel.selectPlatform(it) }
                     )
 
                     SearchSection(
@@ -227,17 +227,6 @@ fun DailyHotDashboard(
                         onQueryChanged = { hotViewModel.updateSearchQuery(it) },
                         platform = activePlatform
                     )
-
-                    if (uiState is UiState.Success) {
-                        val successState = uiState as UiState.Success
-                        if (successState.categories.isNotEmpty()) {
-                            CategoriesBar(
-                                categories = successState.categories,
-                                activeCategory = successState.activeCategory,
-                                onSelected = { hotViewModel.selectCategory(it) }
-                            )
-                        }
-                    }
 
                     Box(
                         modifier = Modifier
@@ -317,6 +306,8 @@ fun DailyHotDashboard(
 fun HeaderSection(
     activePlatform: HotPlatform,
     mode: DashboardMode,
+    isDarkTheme: Boolean = false,
+    onToggleTheme: () -> Unit = {},
     onModeChange: (DashboardMode) -> Unit,
     onRefresh: () -> Unit,
     rotationAngle: Float,
@@ -332,7 +323,7 @@ fun HeaderSection(
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (mode == DashboardMode.HOT_SEARCH) "\u805A\u5408\u70ED\u641C" else "\u5B9E\u65F6\u6CB9\u4EF7",
+                    text = if (mode == DashboardMode.HOT_SEARCH) "\u70ED\u641C\u6CB9\u4EF7" else "\u70ED\u641C\u6CB9\u4EF7",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp
@@ -353,7 +344,7 @@ fun HeaderSection(
                 }
             }
             Text(
-                text = if (mode == DashboardMode.HOT_SEARCH) "\u5B9E\u65F6\u805A\u5408\u56FD\u5185\u5916\u591A\u5E73\u53F0\u6F6E\u6D41\u70ED\u70B9\u6570\u636E" else "\u67E5\u8BE2\u5404\u7701\u4EFD\u5B9E\u65F6\u6CB9\u4EF7\uFF0C\u652F\u6301\u591A\u8282\u70B9\u5907\u7528",
+                text = if (mode == DashboardMode.HOT_SEARCH) "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2" else "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2",
                 style = MaterialTheme.typography.bodySmall.copy(
                     letterSpacing = 0.5.sp
                 ),
@@ -366,14 +357,24 @@ fun HeaderSection(
                 mode = mode,
                 onModeChange = onModeChange
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Box(
                 modifier = Modifier
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        shape = CircleShape
-                    )
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable { onToggleTheme() }
+                    .padding(10.dp)
+            ) {
+                Text(
+                    text = if (isDarkTheme) "\u2600\uFE0F" else "\uD83C\uDF19",
+                    fontSize = 16.sp
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surface)
                     .clickable { onRefresh() }

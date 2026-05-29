@@ -243,6 +243,76 @@ class OilPriceViewModel : ViewModel() {
         } catch (_: Exception) { null }
     }
 
+    private fun tryParseAnyText(body: String): List<OilPriceEntry>? {
+        val items = mutableListOf<OilPriceEntry>()
+        try {
+            if (body.startsWith("{")) {
+                val root = org.json.JSONObject(body)
+                items.addAll(extractOilFromAnyDepth(root))
+            } else if (body.startsWith("[")) {
+                val arr = org.json.JSONArray(body)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i)
+                    if (obj != null) items.addAll(extractOilFromAnyDepth(obj))
+                }
+            }
+            if (items.isNotEmpty()) return items
+        } catch (_: Exception) {}
+
+        val oilPattern = Regex("(?i)((?:92|95|98|0|-10|-20)\\s*(?:号)?\\s*(?:汽油|柴油|乙醇)?)\\s*[:：]?\\s*(\\d+\\.?\\d*)")
+        val matches = oilPattern.findAll(body)
+        for (m in matches) {
+            items.add(OilPriceEntry(label = m.groupValues[1].trim(), price = m.groupValues[2]))
+        }
+        if (items.isNotEmpty()) return items
+
+        val genericPattern = Regex("(?i)((?:汽油|柴油|乙醇|92|95|98|0号|油价|价格))\\s*[:：]?\\s*(\\d+\\.?\\d*)")
+        val genericMatches = genericPattern.findAll(body)
+        for (m in genericMatches) {
+            items.add(OilPriceEntry(label = m.groupValues[1].trim(), price = m.groupValues[2]))
+        }
+        return if (items.isNotEmpty()) items else null
+    }
+
+    private fun extractOilFromAnyDepth(obj: org.json.JSONObject, depth: Int = 0): List<OilPriceEntry> {
+        val items = mutableListOf<OilPriceEntry>()
+        if (depth > 10) return items
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val v = obj.opt(k)
+            when (v) {
+                is org.json.JSONObject -> items.addAll(extractOilFromAnyDepth(v, depth + 1))
+                is org.json.JSONArray -> {
+                    for (i in 0 until v.length()) {
+                        val e = v.optJSONObject(i)
+                        if (e != null) items.addAll(extractOilFromAnyDepth(e, depth + 1))
+                        else {
+                            val sv = v.optString(i)
+                            if (sv.isNotBlank()) {
+                                items.add(OilPriceEntry(label = "", price = sv))
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    val sv = obj.optString(k, "")
+                    if ((k.contains("号") || k.contains("柴油") || k.contains("汽油") || k == "92" || k == "95" || k == "98" || k == "0") && sv.isNotBlank()) {
+                        items.add(OilPriceEntry(label = k, price = sv))
+                    }
+                }
+            }
+        }
+        return items
+    }
+
+    private fun tryAllParsers(body: String, province: String): List<OilPriceEntry>? {
+        return parsePrimaryResponse(body, province)
+            ?: parseBackupResponse(body, province)
+            ?: parseIsterResponse(body, province)
+            ?: tryParseAnyText(body)
+    }
+
     private fun dataToEntries(data: OilPriceData): List<OilPriceEntry> {
         val map = linkedMapOf(
             "92号汽油" to data.`92`,
