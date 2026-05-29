@@ -138,7 +138,6 @@ fun DailyHotDashboard(
     val activePlatform by hotViewModel.activePlatform.collectAsState()
     val searchQuery by hotViewModel.searchQuery.collectAsState()
     val uiState by hotViewModel.uiState.collectAsState()
-    val activeCategory by hotViewModel.activeCategory.collectAsState()
     val oilState by oilViewModel.uiState.collectAsState()
     val selectedProvince by oilViewModel.selectedProvince.collectAsState()
     var mode by remember { mutableStateOf(DashboardMode.HOT_SEARCH) }
@@ -451,58 +450,6 @@ fun ModeToggle(
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = oilContent
                 )
-            }
-        }
-    }
-}
-
-@Composable
-fun CategoriesBar(
-    categories: List<HotSearchCategory>,
-    activeCategory: HotSearchCategory,
-    onSelected: (HotSearchCategory) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    LazyRow(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(categories.size) { index ->
-            val cat = categories[index]
-            val isSelected = cat == activeCategory
-            val chipBg by animateColorAsState(
-                targetValue = if (isSelected) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                animationSpec = tween(durationMillis = 200)
-            )
-            val chipContentColor by animateColorAsState(
-                targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                animationSpec = tween(durationMillis = 200)
-            )
-
-            Surface(
-                modifier = Modifier
-                    .height(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onSelected(cat) },
-                color = chipBg,
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = cat.displayName,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        ),
-                        color = chipContentColor
-                    )
-                }
             }
         }
     }
