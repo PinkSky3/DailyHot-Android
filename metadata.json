@@ -1,0 +1,6 @@
+{
+  "name": "聚合热搜",
+  "description": "实时聚合国内外各大主流平台的热搜榜单，支持微博、知乎、百度、抖音、哔哩哔哩、少数派、36氪、CSDN等平台的数据展示、快速检索、趋势跟踪与快捷跳转分享。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
