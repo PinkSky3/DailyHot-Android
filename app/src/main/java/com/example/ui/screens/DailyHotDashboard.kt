@@ -114,6 +114,7 @@ import coil.request.ImageRequest
 import com.example.data.model.HotPlatform
 import com.example.data.model.HotSearchItem
 import com.example.data.model.OilPriceEntry
+import com.example.data.model.PlatformCategory
 import com.example.data.model.PROVINCES
 import com.example.ui.viewmodel.HotSearchCategory
 import com.example.ui.viewmodel.HotSearchViewModel
@@ -140,6 +141,7 @@ fun DailyHotDashboard(
     val oilState by oilViewModel.uiState.collectAsState()
     val selectedProvince by oilViewModel.selectedProvince.collectAsState()
     var mode by remember { mutableStateOf(DashboardMode.HOT_SEARCH) }
+    var selectedPlatformCategory by remember { mutableStateOf(PlatformCategory.ALL) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -206,9 +208,18 @@ fun DailyHotDashboard(
                 )
 
                 if (mode == DashboardMode.HOT_SEARCH) {
+                    PlatformCategoryBar(
+                        selectedCategory = selectedPlatformCategory,
+                        onSelected = { selectedPlatformCategory = it }
+                    )
+
                     PlatformsBar(
                         activePlatform = activePlatform,
-                        onSelected = { hotViewModel.selectPlatform(it) }
+                        platforms = HotPlatform.platformsByCategory(selectedPlatformCategory),
+                        onSelected = {
+                            hotViewModel.selectPlatform(it)
+                            selectedPlatformCategory = PlatformCategory.ALL
+                        }
                     )
 
                     SearchSection(
@@ -780,8 +791,62 @@ fun OilPriceCard(
 }
 
 @Composable
+fun PlatformCategoryBar(
+    selectedCategory: PlatformCategory,
+    onSelected: (PlatformCategory) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(PlatformCategory.values().size) { index ->
+            val cat = PlatformCategory.values()[index]
+            val count = if (cat == PlatformCategory.ALL) HotPlatform.values().size
+                        else HotPlatform.values().count { it.category == cat }
+            if (count == 0) return@items
+            val isSelected = selectedCategory == cat
+            val chipBg by animateColorAsState(
+                targetValue = if (isSelected) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                animationSpec = tween(durationMillis = 200)
+            )
+            val chipContentColor by animateColorAsState(
+                targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(durationMillis = 200)
+            )
+
+            Surface(
+                modifier = Modifier
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onSelected(cat) },
+                color = chipBg,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${cat.displayName} ($count)",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        color = chipContentColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun PlatformsBar(
     activePlatform: HotPlatform,
+    platforms: List<HotPlatform> = HotPlatform.values().toList(),
     onSelected: (HotPlatform) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -792,8 +857,8 @@ fun PlatformsBar(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(HotPlatform.values().size) { index ->
-            val platform = HotPlatform.values()[index]
+        items(platforms.size) { index ->
+            val platform = platforms[index]
             val isSelected = activePlatform == platform
             
             val chipBg by animateColorAsState(

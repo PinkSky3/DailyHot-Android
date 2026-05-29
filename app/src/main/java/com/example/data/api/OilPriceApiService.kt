@@ -13,4 +13,10 @@ interface OilPriceApiService {
     suspend fun getOilPriceBackup(
         @Query("shengfen") province: String
     ): retrofit2.Response<okhttp3.ResponseBody>
+
+    @GET("resource/v2/oilprice")
+    suspend fun getOilPriceIster(
+        @Query("token") token: String,
+        @Query("keyword") keyword: String
+    ): retrofit2.Response<okhttp3.ResponseBody>
 }
