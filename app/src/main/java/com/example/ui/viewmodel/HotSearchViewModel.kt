@@ -67,31 +67,49 @@ class HotSearchViewModel : ViewModel() {
         _uiState.value = UiState.Loading
         _rawItems.value = emptyList()
 
+        val baseUrlList = listOf(
+            "https://dailyhotapi.3yu3.top/",
+            "https://dailyhot.api.lkwplus.com/"
+        )
+
         fetchJob = viewModelScope.launch {
-            try {
-                val response = RetrofitClient.apiService.getHotList(platform.key)
-                if (response.code == 200 && response.data != null) {
-                    _rawItems.value = response.data
-                    
-                    // Format update time or show local time
-                    val formattedTime = response.updateTime?.let { formatIsoTime(it) } 
-                        ?: SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            var lastErrorMsg = ""
+            var success = false
+
+            for (baseUrl in baseUrlList) {
+                try {
+                    val fullUrl = "${baseUrl.trimEnd('/')}/${platform.key}"
+                    val response = RetrofitClient.apiService.getHotListWithUrl(fullUrl)
+                    if (response.code == 200 && response.data != null) {
+                        _rawItems.value = response.data
                         
-                    _fetchedTime.value = formattedTime
-                    applyFilter()
-                } else {
-                    val message = "服务器返回错误代码 " + response.code
-                    _uiState.value = UiState.Error(message)
+                        // Format update time or show local time
+                        val formattedTime = response.updateTime?.let { formatIsoTime(it) } 
+                            ?: SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                            
+                        _fetchedTime.value = formattedTime
+                        applyFilter()
+                        success = true
+                        break
+                    } else {
+                        lastErrorMsg = "节点(${getHostName(baseUrl)})返回错误: ${response.code}"
+                    }
+                } catch (e: Exception) {
+                    lastErrorMsg = "节点(${getHostName(baseUrl)})异常: ${e.localizedMessage ?: e.message ?: "未知网度错误"}"
                 }
-            } catch (e: Exception) {
-                // Return a user friendly error sentence including type of exception
-                val errMsg = when {
-                    e is java.net.UnknownHostException -> "无法连接至服务器，请检查互联网连接。"
-                    e is java.net.SocketTimeoutException -> "连接服务器超时，请稍后重试。"
-                    else -> "数据获取失败：${e.localizedMessage ?: "未知网络错误"}"
-                }
-                _uiState.value = UiState.Error(errMsg, lastSuccessItems = null)
             }
+
+            if (!success) {
+                _uiState.value = UiState.Error(lastErrorMsg.ifBlank { "数据获取失败，所有节点均不可用。" }, lastSuccessItems = null)
+            }
+        }
+    }
+
+    private fun getHostName(url: String): String {
+        return try {
+            java.net.URL(url).host
+        } catch (e: Exception) {
+            url
         }
     }
 
@@ -107,7 +125,7 @@ class HotSearchViewModel : ViewModel() {
             )
         } else {
             val filtered = currentRaw.filter { item ->
-                item.title.contains(query, ignoreCase = true) || 
+                (item.title?.contains(query, ignoreCase = true) ?: false) || 
                 (item.desc?.contains(query, ignoreCase = true) ?: false) ||
                 (item.author?.contains(query, ignoreCase = true) ?: false)
             }

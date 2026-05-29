@@ -211,14 +211,16 @@ fun DailyHotDashboard(
                                 updateTime = state.updateTime,
                                 onItemClicked = { item ->
                                     // Try to open with in-app native WebView preview
-                                    previewUrl = item.url
-                                    previewTitle = item.title
+                                    if (item.url != null) {
+                                        previewUrl = item.url
+                                        previewTitle = item.title ?: "热搜详情"
+                                    }
                                 },
                                 onCopyItem = { item ->
-                                    copyToClipboard(context, item.title + " " + item.url)
+                                    copyToClipboard(context, (item.title ?: "暂无标题") + " " + (item.url ?: ""))
                                 },
                                 onShareItem = { item ->
-                                    shareText(context, "【聚合热搜・${activePlatform.displayName}】${item.title}：${item.url}")
+                                    shareText(context, "【聚合热搜・${activePlatform.displayName}】${item.title ?: "暂无标题"}：${item.url ?: ""}")
                                 }
                             )
                         }
@@ -512,7 +514,7 @@ fun SuccessStateView(
             ) {
                 itemsIndexed(
                     items = items,
-                    key = { _, item -> item.title + item.url }
+                    key = { _, item -> (item.title ?: "") + (item.url ?: "") }
                 ) { index, item ->
                     TrendItemCard(
                         rank = index + 1,
@@ -606,7 +608,7 @@ fun TrendItemCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = item.title,
+                        text = item.title ?: "暂无标题",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             lineHeight = 22.sp

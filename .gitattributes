@@ -1,0 +1,11 @@
+# Clear text conversions for binary files
+*.jar binary
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+
+# Ensure gradlew has LF line endings and is treated as text
+gradlew text eol=lf
+gradlew.bat text eol=crlf

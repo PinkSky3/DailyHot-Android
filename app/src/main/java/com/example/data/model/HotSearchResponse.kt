@@ -18,12 +18,12 @@ data class HotSearchResponse(
 @JsonClass(generateAdapter = true)
 data class HotSearchItem(
     @Json(name = "id") val id: CoercedString? = null,
-    @Json(name = "title") val title: String,
+    @Json(name = "title") val title: String? = null,
     @Json(name = "desc") val desc: String? = null,
     @Json(name = "cover") val cover: String? = null,
     @Json(name = "pic") val pic: String? = null,
     @Json(name = "author") val author: String? = null,
     @Json(name = "hot") val hot: CoercedString? = null,
-    @Json(name = "url") val url: String,
+    @Json(name = "url") val url: String? = null,
     @Json(name = "mobileUrl") val mobileUrl: String? = null
 )
