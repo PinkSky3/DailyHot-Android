@@ -103,12 +103,12 @@ class AiChatViewModel : ViewModel() {
                         _messages.value = _messages.value + ChatUiMessage("assistant", reply)
                         _chatState.value = AiChatState.Idle
                     } else {
-                        _chatState.value = AiChatState.Error("AI \u54B8\u56DE\u7B54\u4E3A\u7A7A")
+                        _chatState.value = AiChatState.Error("AI \u56DE\u7B54\u4E3A\u7A7A\uFF0C\u8BF7\u68C0\u67E5\u6A21\u578B\u662F\u5426\u652F\u6301")
                     }
                 } else {
-                    _chatState.value = AiChatState.Error(
-                        "\u8BF7\u6C42\u5931\u8D25: ${response.code()} ${response.message()}"
-                    )
+                    val errorBody = response.errorBody()?.string()
+                    val errorMsg = if (errorBody != null) "\u8BF7\u6C42\u5931\u8D25(${response.code()}): $errorBody" else "\u8BF7\u6C42\u5931\u8D25: ${response.code()} ${response.message()}"
+                    _chatState.value = AiChatState.Error(errorMsg)
                 }
             } catch (e: Exception) {
                 _chatState.value = AiChatState.Error(
