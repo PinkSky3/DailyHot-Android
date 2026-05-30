@@ -121,6 +121,7 @@ import com.example.data.model.HotSearchItem
 import com.example.data.model.OilPriceEntry
 import com.example.data.model.PlatformCategory
 import com.example.data.model.PROVINCES
+import com.example.ui.viewmodel.AiChatViewModel
 import com.example.ui.viewmodel.HotSearchViewModel
 import com.example.ui.viewmodel.OilPriceUiState
 import com.example.ui.viewmodel.OilPriceViewModel
