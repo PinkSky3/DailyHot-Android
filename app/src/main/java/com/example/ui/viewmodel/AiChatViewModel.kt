@@ -3,13 +3,12 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.RetrofitClient
-import com.example.data.model.AiModel
 import com.example.data.model.ChatCompletionRequest
 import com.example.data.model.ChatMessage
 import com.example.data.model.HotSearchItem
+import com.example.data.model.ModelHealth
 import com.example.data.model.OilPriceEntry
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,12 +34,11 @@ sealed interface AiChatState {
 
 class AiChatViewModel : ViewModel() {
 
-    private val moshi = Moshi.Builder()
-        .addLast(KotlinJsonAdapterFactory())
-        .build()
+    private val _selectedModel = MutableStateFlow("")
+    val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
-    private val _selectedModel = MutableStateFlow(AiModel.GEMMA)
-    val selectedModel: StateFlow<AiModel> = _selectedModel.asStateFlow()
+    private val _modelHealthList = MutableStateFlow<List<ModelHealth>>(emptyList())
+    val modelHealthList: StateFlow<List<ModelHealth>> = _modelHealthList.asStateFlow()
 
     private val _messages = MutableStateFlow<List<ChatUiMessage>>(emptyList())
     val messages: StateFlow<List<ChatUiMessage>> = _messages.asStateFlow()
@@ -54,32 +52,89 @@ class AiChatViewModel : ViewModel() {
     private val _dialogVisible = MutableStateFlow(false)
     val dialogVisible: StateFlow<Boolean> = _dialogVisible.asStateFlow()
 
-    private val _availableModels = MutableStateFlow<List<String>>(emptyList())
-    val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+    init {
+        refreshModels()
+        startPeriodicHealthCheck()
+    }
 
-    fun fetchAvailableModels() {
+    private fun refreshModels() {
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.aiChatApi.listModels()
-                if (response.isSuccessful) {
-                    val modelIds = response.body()?.data?.mapNotNull { it.id } ?: emptyList()
-                    _availableModels.value = modelIds
-                    val msg = "\u53EF\u7528\u6A21\u578B: ${modelIds.joinToString(", ")}"
-                    _messages.value = listOf(ChatUiMessage("system", msg))
-                } else {
-                    val errorBody = response.errorBody()?.string()
-                    _availableModels.value = emptyList()
-                    _messages.value = listOf(ChatUiMessage("system", "\u83B7\u53D6\u6A21\u578B\u5217\u8868\u5931\u8D25: ${response.code()} $errorBody"))
+                val models = if (response.isSuccessful) {
+                    response.body()?.data?.filter { it.channel_type == "\u514D\u8D39" || it.channel_type == null }?.mapNotNull { info ->
+                        val id = info.id ?: return@mapNotNull null
+                        ModelHealth(id, info.model ?: id, false)
+                    } ?: emptyList()
+                } else emptyList()
+
+                val list = if (models.isEmpty()) {
+                    listOf(
+                        ModelHealth("glm-4-flash-250414", "GLM-4-Flash", false),
+                        ModelHealth("spark-lite", "Spark Lite", false)
+                    )
+                } else models
+
+                _modelHealthList.value = list
+                if (_selectedModel.value.isBlank() && list.isNotEmpty()) {
+                    _selectedModel.value = list.first().id
                 }
-            } catch (e: Exception) {
-                _availableModels.value = emptyList()
-                _messages.value = listOf(ChatUiMessage("system", "\u6A21\u578B\u5217\u8868\u63A5\u53E3\u5F02\u5E38: ${e.localizedMessage ?: e.message}"))
+
+                if (list.isNotEmpty()) testModels(list.map { it.id })
+            } catch (_: Exception) {
+                val fallback = listOf(
+                    ModelHealth("glm-4-flash-250414", "GLM-4-Flash", false),
+                    ModelHealth("spark-lite", "Spark Lite", false)
+                )
+                _modelHealthList.value = fallback
+                if (_selectedModel.value.isBlank()) _selectedModel.value = fallback.first().id
             }
         }
     }
 
-    fun selectModel(model: AiModel) {
-        _selectedModel.value = model
+    private suspend fun testModels(modelIds: List<String>) {
+        for (id in modelIds) {
+            try {
+                val request = ChatCompletionRequest(
+                    model = id,
+                    messages = listOf(ChatMessage("user", "hi")),
+                    temperature = 0.1
+                )
+                val response = RetrofitClient.aiChatApi.chatCompletions(request)
+                updateModelHealth(id, response.isSuccessful)
+            } catch (_: Exception) {
+                updateModelHealth(id, false)
+            }
+        }
+    }
+
+    private fun updateModelHealth(id: String, isOnline: Boolean) {
+        val current = _modelHealthList.value.toMutableList()
+        val idx = current.indexOfFirst { it.id == id }
+        if (idx < 0) return
+        current[idx] = current[idx].copy(isOnline = isOnline)
+        _modelHealthList.value = current
+
+        val sel = _selectedModel.value
+        val currentOnline = current.any { it.id == sel && it.isOnline }
+        if (sel.isBlank() || !currentOnline) {
+            val firstOnline = current.firstOrNull { it.isOnline }
+            if (firstOnline != null) _selectedModel.value = firstOnline.id
+        }
+    }
+
+    private fun startPeriodicHealthCheck() {
+        viewModelScope.launch {
+            while (true) {
+                delay(60_000)
+                val ids = _modelHealthList.value.map { it.id }
+                if (ids.isNotEmpty()) testModels(ids)
+            }
+        }
+    }
+
+    fun selectModel(id: String) {
+        _selectedModel.value = id
     }
 
     fun toggleDialog() {
@@ -100,6 +155,11 @@ class AiChatViewModel : ViewModel() {
 
     fun sendMessage(text: String) {
         if (text.isBlank()) return
+        val modelId = _selectedModel.value
+        if (modelId.isBlank()) {
+            _chatState.value = AiChatState.Error("\u6CA1\u6709\u53EF\u7528\u6A21\u578B\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5")
+            return
+        }
 
         val userMessage = ChatUiMessage(role = "user", content = text)
         _messages.value = _messages.value + userMessage
@@ -112,7 +172,7 @@ class AiChatViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val request = ChatCompletionRequest(
-                    model = _selectedModel.value.apiName,
+                    model = modelId,
                     messages = listOfNotNull(
                         ChatMessage("system", systemPrompt),
                         *history.dropLast(1).toTypedArray(),
@@ -127,7 +187,7 @@ class AiChatViewModel : ViewModel() {
                         _messages.value = _messages.value + ChatUiMessage("assistant", reply)
                         _chatState.value = AiChatState.Idle
                     } else {
-                        _chatState.value = AiChatState.Error("AI \u56DE\u7B54\u4E3A\u7A7A\uFF0C\u8BF7\u68C0\u67E5\u6A21\u578B\u662F\u5426\u652F\u6301")
+                        _chatState.value = AiChatState.Error("\u6A21\u578B\u56DE\u7B54\u4E3A\u7A7A\uFF0C\u8BF7\u6362\u4E00\u4E2A\u6A21\u578B\u8BD5\u8BD5")
                     }
                 } else {
                     val errorBody = response.errorBody()?.string()
@@ -135,9 +195,7 @@ class AiChatViewModel : ViewModel() {
                     _chatState.value = AiChatState.Error(errorMsg)
                 }
             } catch (e: Exception) {
-                _chatState.value = AiChatState.Error(
-                    "\u7F51\u7EDC\u5F02\u5E38: ${e.localizedMessage ?: e.message ?: "\u672A\u77E5\u9519\u8BEF"}"
-                )
+                _chatState.value = AiChatState.Error("\u7F51\u7EDC\u5F02\u5E38: ${e.localizedMessage ?: e.message ?: "\u672A\u77E5\u9519\u8BEF"}")
             }
         }
     }

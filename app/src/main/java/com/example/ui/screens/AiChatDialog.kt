@@ -1,22 +1,15 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,19 +21,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -56,7 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.model.AiModel
+import com.example.data.model.ModelHealth
 import com.example.ui.viewmodel.AiChatState
 import com.example.ui.viewmodel.AiChatViewModel
 
@@ -67,65 +66,58 @@ fun AiChatFab(
 ) {
     val dialogVisible by viewModel.dialogVisible.collectAsState()
 
-    Box(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF2196F3))
-                .clickable { viewModel.toggleDialog() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.SmartToy,
-                contentDescription = "AI\u95EE\u7B54",
-                tint = Color.White,
-                modifier = Modifier.size(26.dp)
-            )
-        }
+    Box(
+        modifier = modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF2196F3))
+            .clickable { viewModel.showDialog() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.SmartToy,
+            contentDescription = "AI\u95EE\u7B54",
+            tint = Color.White,
+            modifier = Modifier.size(26.dp)
+        )
+    }
 
-        AnimatedVisibility(
-            visible = dialogVisible,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-        ) {
-            AiChatPanel(viewModel = viewModel)
-        }
+    if (dialogVisible) {
+        AiChatSheet(viewModel = viewModel)
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiChatPanel(
-    viewModel: AiChatViewModel,
-    modifier: Modifier = Modifier
-) {
+fun AiChatSheet(viewModel: AiChatViewModel) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val messages by viewModel.messages.collectAsState()
     val chatState by viewModel.chatState.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
+    val modelHealthList by viewModel.modelHealthList.collectAsState()
     val aiContext by viewModel.aiContext.collectAsState()
 
     val scrollState = rememberLazyListState()
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            scrollState.animateScrollToItem(messages.size - 1)
-        }
+        if (messages.isNotEmpty()) scrollState.animateScrollToItem(messages.size - 1)
     }
 
-    Surface(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(top = 80.dp, bottom = 16.dp, start = 16.dp, end = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        shadowElevation = 16.dp,
-        color = MaterialTheme.colorScheme.surface
+    ModalBottomSheet(
+        onDismissRequest = { viewModel.hideDialog() },
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 600.dp)
+        ) {
+            // Header: title + model dropdown + close
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -133,45 +125,14 @@ fun AiChatPanel(
                     text = "AI\u95EE\u7B54",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "\u6A21\u578B",
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { viewModel.fetchAvailableModels() }
-                            .background(Color(0xFF2196F3).copy(alpha = 0.1f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF2196F3)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ModelDropdown(
+                        modelHealthList = modelHealthList,
+                        selectedModelId = selectedModel,
+                        onSelect = { viewModel.selectModel(it) }
                     )
                     IconButton(onClick = { viewModel.hideDialog() }) {
                         Icon(Icons.Default.Close, contentDescription = "\u5173\u95ED")
-                    }
-                }
-            }
-
-            // Model switch
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AiModel.entries.forEach { model ->
-                    val isSelected = model == selectedModel
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { viewModel.selectModel(model) },
-                        color = if (isSelected) Color(0xFF2196F3) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = model.displayName,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -181,7 +142,7 @@ fun AiChatPanel(
             if (contextSummary.isNotBlank()) {
                 Text(
                     text = contextSummary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
@@ -299,6 +260,84 @@ fun AiChatPanel(
             }
         }
     }
+}
+
+@Composable
+private fun ModelDropdown(
+    modelHealthList: List<ModelHealth>,
+    selectedModelId: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = modelHealthList.find { it.id == selectedModelId }
+
+    Box {
+        Surface(
+            modifier = Modifier.clickable { expanded = true },
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFF2196F3).copy(alpha = 0.1f)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatusDot(isOnline = current?.isOnline ?: false)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = current?.displayName ?: selectedModelId,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF2196F3)
+                )
+                Spacer(Modifier.width(2.dp))
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = Color(0xFF2196F3),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            modelHealthList.forEach { model ->
+                DropdownMenuItem(
+                    onClick = {
+                        if (model.isOnline) {
+                            onSelect(model.id)
+                            expanded = false
+                        }
+                    },
+                    enabled = model.isOnline,
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StatusDot(isOnline = model.isOnline)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = model.displayName,
+                                style = if (model.isOnline) MaterialTheme.typography.bodyMedium
+                                    else MaterialTheme.typography.bodyMedium.copy(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    )
+                            )
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusDot(isOnline: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .clip(CircleShape)
+            .background(if (isOnline) Color(0xFF4CAF50) else Color(0xFFF44336))
+    )
 }
 
 @Composable
