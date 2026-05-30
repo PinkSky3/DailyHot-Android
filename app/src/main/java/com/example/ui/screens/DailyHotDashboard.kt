@@ -139,6 +139,7 @@ fun DailyHotDashboard(
     hotViewModel: HotSearchViewModel,
     oilViewModel: OilPriceViewModel,
     news60sViewModel: News60sViewModel,
+    aiChatViewModel: AiChatViewModel,
     isDarkTheme: Boolean = false,
     onToggleTheme: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -166,6 +167,22 @@ fun DailyHotDashboard(
         animationSpec = tween(durationMillis = 650),
         finishedListener = { isRotating = false }
     )
+
+    // Update AI chat context when data changes
+    LaunchedEffect(uiState, news60sState, oilState, selectedProvince) {
+        val hotItems = (uiState as? UiState.Success)?.items?.take(15) ?: emptyList()
+        val newsList = (news60sState as? News60sUiState.Success)?.newsList ?: emptyList()
+        val oilEntries = (oilState as? OilPriceUiState.Success)?.entries ?: emptyList()
+        val oilProvince = (oilState as? OilPriceUiState.Success)?.province
+        aiChatViewModel.updateContext(
+            com.example.ui.viewmodel.AiContext(
+                hotItems = hotItems,
+                news60s = newsList,
+                oilProvince = oilProvince,
+                oilEntries = oilEntries
+            )
+        )
+    }
 
     // Back handler to close native WebView preview
     if (previewUrl != null) {
@@ -312,6 +329,14 @@ fun DailyHotDashboard(
                     )
                 }
             }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp)
+            ) {
+                AiChatFab(viewModel = aiChatViewModel)
+            }
         }
     }
 }
@@ -327,14 +352,15 @@ fun HeaderSection(
     rotationAngle: Float,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Column(modifier = modifier
+        .fillMaxWidth()
+        .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "\u805A\u5408\u70ED\u641C",
@@ -366,61 +392,68 @@ fun HeaderSection(
                         fontSize = 12.sp
                     )
                 }
+                Text(
+                    text = when (mode) {
+                        DashboardMode.NEWS_60S -> "60\u79D2\u8BFB\u4E16\u754C"
+                        DashboardMode.HOT_SEARCH -> "\u591A\u5E73\u53F0\u70ED\u641C"
+                        DashboardMode.OIL_PRICE -> "\u6CB9\u4EF7\u67E5\u8BE2"
+                    },
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
-            Text(
-                text = when (mode) {
-                    DashboardMode.NEWS_60S -> "60\u79D2\u8BFB\u4E16\u754C\u00B7\u6BCF\u65E5\u65B0\u95FB\u5FEB\u62A5"
-                    DashboardMode.HOT_SEARCH -> "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2"
-                    DashboardMode.OIL_PRICE -> "\u591A\u5E73\u53F0\u70ED\u641C\u805A\u5408\u00B7\u5B9E\u65F6\u6CB9\u4EF7\u67E5\u8BE2"
-                },
-                style = MaterialTheme.typography.bodySmall.copy(
-                    letterSpacing = 0.5.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
-        }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { onToggleTheme() }
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        text = if (isDarkTheme) "\u2600\uFE0F" else "\uD83C\uDF19",
+                        fontSize = 16.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { onRefresh() }
+                        .padding(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "\u5237\u65B0",
+                        tint = when (mode) {
+                            DashboardMode.NEWS_60S -> Color(0xFF2196F3)
+                            DashboardMode.HOT_SEARCH -> activePlatform.brandColor
+                            DashboardMode.OIL_PRICE -> Color(0xFFFF6B35)
+                        },
+                        modifier = Modifier
+                            .size(20.dp)
+                            .rotate(rotationAngle)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             ModeToggle(
                 mode = mode,
                 onModeChange = onModeChange
             )
-            Spacer(modifier = Modifier.width(4.dp))
-            Box(
-                modifier = Modifier
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .clickable { onToggleTheme() }
-                    .padding(10.dp)
-            ) {
-                Text(
-                    text = if (isDarkTheme) "\u2600\uFE0F" else "\uD83C\uDF19",
-                    fontSize = 16.sp
-                )
-            }
-            Spacer(modifier = Modifier.width(4.dp))
-            Box(
-                modifier = Modifier
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .clickable { onRefresh() }
-                    .padding(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "\u5237\u65B0",
-                    tint = when (mode) {
-                        DashboardMode.NEWS_60S -> Color(0xFF2196F3)
-                        DashboardMode.HOT_SEARCH -> activePlatform.brandColor
-                        DashboardMode.OIL_PRICE -> Color(0xFFFF6B35)
-                    },
-                    modifier = Modifier
-                        .size(20.dp)
-                        .rotate(rotationAngle)
-                )
-            }
         }
     }
 }
@@ -521,16 +554,12 @@ fun OilPriceContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 12.dp)
     ) {
-        Spacer(modifier = Modifier.height(8.dp))
-
         ProvinceSelector(
             selectedProvince = selectedProvince,
             onProvinceSelected = onProvinceSelected
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
 
         when (val state = oilState) {
             is OilPriceUiState.Loading -> {
@@ -555,28 +584,6 @@ fun OilPriceContent(
             }
             is OilPriceUiState.Success -> {
                 val oilColor = Color(0xFFFF6B35)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "\u6E90: Pear API",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                    IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "\u5237\u65B0",
-                            tint = oilColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -700,28 +707,6 @@ fun News60sContent(
                 }
             }
             is News60sUiState.Success -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "源: Pear API",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                    IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "\u5237\u65B0",
-                            tint = Color(0xFF2196F3),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
                 val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
