@@ -1,5 +1,6 @@
 package com.example.data.api
 
+import com.example.BuildConfig
 import com.example.data.model.CoercedStringAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -31,7 +32,7 @@ object RetrofitClient {
 
     private val authInterceptor = Interceptor { chain ->
         val request = chain.request().newBuilder()
-            .addHeader("Authorization", "Bearer $PEAR_AI_API_KEY")
+            .addHeader("Authorization", "Bearer ${BuildConfig.PEAR_AI_API_KEY}")
             .build()
         chain.proceed(request)
     }

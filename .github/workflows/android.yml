@@ -47,8 +47,8 @@ jobs:
       run: |
         keytool -genkey -v -keystore ./debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-    - name: Create dummy .env file
-      run: touch .env
+    - name: Write API key from secret
+      run: echo "AI_API_KEY=${{ secrets.PEAR_AI_API_KEY }}" > .env
 
     - name: Build Debug APK
       run: ./gradlew assembleDebug --stacktrace --no-daemon
