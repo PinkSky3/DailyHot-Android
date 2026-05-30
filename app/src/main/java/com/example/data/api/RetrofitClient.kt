@@ -32,7 +32,7 @@ object RetrofitClient {
 
     private val authInterceptor = Interceptor { chain ->
         val request = chain.request().newBuilder()
-            .addHeader("Authorization", "Bearer ${BuildConfig.AI_API_KEY}")
+            .addHeader("Authorization", "Bearer ${BuildConfig.PEAR_AI_API_KEY}")
             .build()
         chain.proceed(request)
     }

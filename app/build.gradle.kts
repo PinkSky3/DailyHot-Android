@@ -18,6 +18,15 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    val envFile = rootProject.file(".env")
+    val aiApiKey = if (envFile.exists()) {
+      envFile.readLines()
+        .firstOrNull { it.startsWith("AI_API_KEY=") }
+        ?.removePrefix("AI_API_KEY=")
+        ?: ""
+    } else ""
+    buildConfigField("String", "PEAR_AI_API_KEY", "\"$aiApiKey\"")
   }
 
   signingConfigs {
