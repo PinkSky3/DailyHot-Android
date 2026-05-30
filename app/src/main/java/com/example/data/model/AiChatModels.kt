@@ -1,8 +1,8 @@
 package com.example.data.model
 
 enum class AiModel(val apiName: String, val displayName: String) {
-    GEMMA("gemini/gemma-4-26b-a4b-it", "Gemma 4"),
-    STEP("stepfun/step-3.5-flash", "Step 3.5")
+    GEMMA("gemma-4-26b-a4b-it", "Gemma 4"),
+    STEP("step-3.5-flash", "Step 3.5")
 }
 
 data class ChatMessage(
