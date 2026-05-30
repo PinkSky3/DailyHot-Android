@@ -54,6 +54,30 @@ class AiChatViewModel : ViewModel() {
     private val _dialogVisible = MutableStateFlow(false)
     val dialogVisible: StateFlow<Boolean> = _dialogVisible.asStateFlow()
 
+    private val _availableModels = MutableStateFlow<List<String>>(emptyList())
+    val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    fun fetchAvailableModels() {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.aiChatApi.listModels()
+                if (response.isSuccessful) {
+                    val modelIds = response.body()?.data?.mapNotNull { it.id } ?: emptyList()
+                    _availableModels.value = modelIds
+                    val msg = "\u53EF\u7528\u6A21\u578B: ${modelIds.joinToString(", ")}"
+                    _messages.value = listOf(ChatUiMessage("system", msg))
+                } else {
+                    val errorBody = response.errorBody()?.string()
+                    _availableModels.value = emptyList()
+                    _messages.value = listOf(ChatUiMessage("system", "\u83B7\u53D6\u6A21\u578B\u5217\u8868\u5931\u8D25: ${response.code()} $errorBody"))
+                }
+            } catch (e: Exception) {
+                _availableModels.value = emptyList()
+                _messages.value = listOf(ChatUiMessage("system", "\u6A21\u578B\u5217\u8868\u63A5\u53E3\u5F02\u5E38: ${e.localizedMessage ?: e.message}"))
+            }
+        }
+    }
+
     fun selectModel(model: AiModel) {
         _selectedModel.value = model
     }

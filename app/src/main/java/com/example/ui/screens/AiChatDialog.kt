@@ -133,8 +133,20 @@ fun AiChatPanel(
                     text = "AI\u95EE\u7B54",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
-                IconButton(onClick = { viewModel.hideDialog() }) {
-                    Icon(Icons.Default.Close, contentDescription = "\u5173\u95ED")
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "\u6A21\u578B",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { viewModel.fetchAvailableModels() }
+                            .background(Color(0xFF2196F3).copy(alpha = 0.1f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF2196F3)
+                    )
+                    IconButton(onClick = { viewModel.hideDialog() }) {
+                        Icon(Icons.Default.Close, contentDescription = "\u5173\u95ED")
+                    }
                 }
             }
 
