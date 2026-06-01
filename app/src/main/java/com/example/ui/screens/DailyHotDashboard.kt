@@ -382,7 +382,7 @@ fun HeaderSection(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "\u805A\u5408\u70ED\u641C",
+                    text = "\u805A\u5408\u667A\u8BAF",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp
