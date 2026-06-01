@@ -60,4 +60,5 @@ object RetrofitClient {
     val oilPriceApi: OilPriceApiService = pearRetrofit.create(OilPriceApiService::class.java)
     val news60sApi: News60sApiService = pearRetrofit.create(News60sApiService::class.java)
     val aiChatApi: AiChatApiService = pearRetrofit.create(AiChatApiService::class.java)
+    val goldPriceApi: GoldPriceApiService = retrofit.create(GoldPriceApiService::class.java)
 }

@@ -116,12 +116,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.data.model.GoldBankRecycleEntry
+import com.example.data.model.GoldBrandEntry
+import com.example.data.model.GoldMarketEntry
 import com.example.data.model.HotPlatform
 import com.example.data.model.HotSearchItem
 import com.example.data.model.OilPriceEntry
 import com.example.data.model.PlatformCategory
 import com.example.data.model.PROVINCES
 import com.example.ui.viewmodel.AiChatViewModel
+import com.example.ui.viewmodel.GoldPriceUiState
+import com.example.ui.viewmodel.GoldPriceViewModel
 import com.example.ui.viewmodel.HotSearchViewModel
 import com.example.ui.viewmodel.OilPriceUiState
 import com.example.ui.viewmodel.OilPriceViewModel
@@ -132,13 +137,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class DashboardMode {
-    NEWS_60S, HOT_SEARCH, OIL_PRICE
+    NEWS_60S, HOT_SEARCH, OIL_PRICE, GOLD_PRICE
 }
 
 @Composable
 fun DailyHotDashboard(
     hotViewModel: HotSearchViewModel,
     oilViewModel: OilPriceViewModel,
+    goldViewModel: GoldPriceViewModel,
     news60sViewModel: News60sViewModel,
     aiChatViewModel: AiChatViewModel,
     isDarkTheme: Boolean = false,
@@ -149,6 +155,7 @@ fun DailyHotDashboard(
     val searchQuery by hotViewModel.searchQuery.collectAsState()
     val uiState by hotViewModel.uiState.collectAsState()
     val oilState by oilViewModel.uiState.collectAsState()
+    val goldState by goldViewModel.uiState.collectAsState()
     val selectedProvince by oilViewModel.selectedProvince.collectAsState()
     val news60sState by news60sViewModel.uiState.collectAsState()
     var mode by remember { mutableStateOf(DashboardMode.NEWS_60S) }
@@ -170,17 +177,21 @@ fun DailyHotDashboard(
     )
 
     // Update AI chat context when data changes
-    LaunchedEffect(uiState, news60sState, oilState, selectedProvince) {
+    LaunchedEffect(uiState, news60sState, oilState, goldState, selectedProvince) {
         val hotItems = (uiState as? UiState.Success)?.items?.take(15) ?: emptyList()
         val newsList = (news60sState as? News60sUiState.Success)?.newsList ?: emptyList()
         val oilEntries = (oilState as? OilPriceUiState.Success)?.entries ?: emptyList()
         val oilProvince = (oilState as? OilPriceUiState.Success)?.province
+        val goldMarkets = (goldState as? GoldPriceUiState.Success)?.snapshot?.let {
+            it.domesticMarkets + it.internationalMarkets
+        } ?: emptyList()
         aiChatViewModel.updateContext(
             com.example.ui.viewmodel.AiContext(
                 hotItems = hotItems,
                 news60s = newsList,
                 oilProvince = oilProvince,
-                oilEntries = oilEntries
+                oilEntries = oilEntries,
+                goldMarkets = goldMarkets
             )
         )
     }
@@ -230,6 +241,7 @@ fun DailyHotDashboard(
                         when (mode) {
                             DashboardMode.HOT_SEARCH -> hotViewModel.refreshActivePlatform()
                             DashboardMode.OIL_PRICE -> oilViewModel.refresh()
+                            DashboardMode.GOLD_PRICE -> goldViewModel.refresh()
                             DashboardMode.NEWS_60S -> news60sViewModel.refresh()
                         }
                     },
@@ -302,6 +314,12 @@ fun DailyHotDashboard(
                             selectedProvince = selectedProvince,
                             onProvinceSelected = { oilViewModel.selectProvince(it) },
                             onRefresh = { oilViewModel.refresh() }
+                        )
+                    }
+                    DashboardMode.GOLD_PRICE -> {
+                        GoldPriceContent(
+                            goldState = goldState,
+                            onRefresh = { goldViewModel.refresh() }
                         )
                     }
                 }
@@ -380,6 +398,7 @@ fun HeaderSection(
                                 DashboardMode.NEWS_60S -> Color(0xFF2196F3).copy(alpha = 0.15f)
                                 DashboardMode.HOT_SEARCH -> activePlatform.brandColor.copy(alpha = 0.15f)
                                 DashboardMode.OIL_PRICE -> Color(0xFFFF6B35).copy(alpha = 0.15f)
+                                DashboardMode.GOLD_PRICE -> Color(0xFFD4A017).copy(alpha = 0.16f)
                             }
                         )
                         .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -389,6 +408,7 @@ fun HeaderSection(
                             DashboardMode.NEWS_60S -> "\uD83D\uDCF0"
                             DashboardMode.HOT_SEARCH -> activePlatform.infoEmoji
                             DashboardMode.OIL_PRICE -> "\u26FD"
+                            DashboardMode.GOLD_PRICE -> "\uD83E\uDE99"
                         },
                         fontSize = 12.sp
                     )
@@ -398,6 +418,7 @@ fun HeaderSection(
                         DashboardMode.NEWS_60S -> "60\u79D2\u8BFB\u4E16\u754C"
                         DashboardMode.HOT_SEARCH -> "\u591A\u5E73\u53F0\u70ED\u641C"
                         DashboardMode.OIL_PRICE -> "\u6CB9\u4EF7\u67E5\u8BE2"
+                        DashboardMode.GOLD_PRICE -> "\u91D1\u4EF7\u67E5\u8BE2"
                     },
                     modifier = Modifier.padding(start = 8.dp),
                     style = MaterialTheme.typography.bodySmall.copy(
@@ -437,6 +458,7 @@ fun HeaderSection(
                             DashboardMode.NEWS_60S -> Color(0xFF2196F3)
                             DashboardMode.HOT_SEARCH -> activePlatform.brandColor
                             DashboardMode.OIL_PRICE -> Color(0xFFFF6B35)
+                            DashboardMode.GOLD_PRICE -> Color(0xFFD4A017)
                         },
                         modifier = Modifier
                             .size(20.dp)
@@ -477,6 +499,10 @@ fun ModeToggle(
         targetValue = if (mode == DashboardMode.OIL_PRICE) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         animationSpec = tween(durationMillis = 200)
     )
+    val goldBg by animateColorAsState(
+        targetValue = if (mode == DashboardMode.GOLD_PRICE) Color(0xFFD4A017) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = tween(durationMillis = 200)
+    )
     val news60sContent by animateColorAsState(
         targetValue = if (mode == DashboardMode.NEWS_60S) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(durationMillis = 200)
@@ -487,6 +513,10 @@ fun ModeToggle(
     )
     val oilContent by animateColorAsState(
         targetValue = if (mode == DashboardMode.OIL_PRICE) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 200)
+    )
+    val goldContent by animateColorAsState(
+        targetValue = if (mode == DashboardMode.GOLD_PRICE) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(durationMillis = 200)
     )
 
@@ -538,6 +568,20 @@ fun ModeToggle(
                     text = "\u6CB9\u4EF7",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = oilContent
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(goldBg)
+                    .clickable { onModeChange(DashboardMode.GOLD_PRICE) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u91D1\u4EF7",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = goldContent
                 )
             }
         }
@@ -676,6 +720,356 @@ fun OilPriceContent(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun GoldPriceContent(
+    goldState: GoldPriceUiState,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val goldColor = Color(0xFFD4A017)
+    when (val state = goldState) {
+        is GoldPriceUiState.Loading -> {
+            Box(
+                modifier = modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        color = goldColor,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(46.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "\u6B63\u5728\u83B7\u53D6\u5B9E\u65F6\u91D1\u4EF7...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+        is GoldPriceUiState.Success -> {
+            val snapshot = state.snapshot
+            LazyColumn(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 88.dp)
+            ) {
+                item {
+                    GoldSummaryCard(
+                        source = snapshot.source,
+                        updateTime = snapshot.updateTime,
+                        accentColor = goldColor
+                    )
+                }
+
+                if (snapshot.domesticMarkets.isNotEmpty()) {
+                    item { GoldSectionTitle(text = "\u56FD\u5185\u8D35\u91D1\u5C5E") }
+                    itemsIndexed(snapshot.domesticMarkets, key = { _, item -> "domestic-${item.name}" }) { _, item ->
+                        GoldMarketCard(entry = item, accentColor = goldColor)
+                    }
+                }
+
+                if (snapshot.internationalMarkets.isNotEmpty()) {
+                    item { GoldSectionTitle(text = "\u56FD\u9645\u5E02\u573A") }
+                    itemsIndexed(snapshot.internationalMarkets, key = { _, item -> "international-${item.name}" }) { _, item ->
+                        GoldMarketCard(entry = item, accentColor = Color(0xFF5B8DEF))
+                    }
+                }
+
+                if (snapshot.brands.isNotEmpty()) {
+                    item { GoldSectionTitle(text = "\u54C1\u724C\u91D1\u5E97") }
+                    itemsIndexed(snapshot.brands.take(30), key = { index, item -> "brand-$index-${item.brand}" }) { _, item ->
+                        GoldBrandCard(entry = item)
+                    }
+                }
+
+                if (snapshot.bankRecycle.isNotEmpty()) {
+                    item { GoldSectionTitle(text = "\u94F6\u884C\u91D1\u6761 / \u56DE\u6536\u4EF7") }
+                    itemsIndexed(snapshot.bankRecycle.take(30), key = { index, item -> "bank-$index-${item.name}" }) { _, item ->
+                        GoldBankRecycleCard(entry = item)
+                    }
+                }
+            }
+        }
+        is GoldPriceUiState.Error -> {
+            Box(
+                modifier = modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 30.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = goldColor,
+                        modifier = Modifier.size(54.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Surface(
+                        modifier = Modifier
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onRefresh() },
+                        color = goldColor,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "\u91CD\u65B0\u52A0\u8F7D",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GoldSummaryCard(
+    source: String,
+    updateTime: String,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "\uD83E\uDE99", fontSize = 24.sp)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "\u5B9E\u65F6\u91D1\u4EF7\u884C\u60C5",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "\u6765\u6E90: $source",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "\u66F4\u65B0: $updateTime",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GoldSectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        modifier = modifier.padding(top = 8.dp, start = 4.dp),
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+        color = MaterialTheme.colorScheme.onSurface
+    )
+}
+
+@Composable
+fun GoldMarketCard(
+    entry: GoldMarketEntry,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = entry.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = entry.unit,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = entry.sellPrice,
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
+                        color = accentColor
+                    )
+                    Text(
+                        text = entry.changeRate,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (entry.changeRate.startsWith("\u2193")) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                GoldMetric("\u5F00\u76D8", entry.openPrice)
+                GoldMetric("\u6700\u9AD8", entry.highPrice)
+                GoldMetric("\u6700\u4F4E", entry.lowPrice)
+            }
+        }
+    }
+}
+
+@Composable
+fun GoldMetric(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+fun GoldBrandCard(
+    entry: GoldBrandEntry,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = entry.brand,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = entry.updated,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                GoldMetric("\u9EC4\u91D1", entry.goldPrice)
+                GoldMetric("\u91D1\u6761", entry.bullionPrice)
+                GoldMetric("\u94C2\u91D1", entry.platinumPrice)
+            }
+        }
+    }
+}
+
+@Composable
+fun GoldBankRecycleCard(
+    entry: GoldBankRecycleEntry,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${entry.type}  ${entry.updated}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = entry.price,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                color = Color(0xFFD4A017)
+            )
         }
     }
 }

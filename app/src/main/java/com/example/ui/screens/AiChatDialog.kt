@@ -306,12 +306,9 @@ private fun ModelDropdown(
             modelHealthList.forEach { model ->
                 DropdownMenuItem(
                     onClick = {
-                        if (model.isOnline) {
-                            onSelect(model.id)
-                            expanded = false
-                        }
+                        onSelect(model.id)
+                        expanded = false
                     },
-                    enabled = model.isOnline,
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             StatusDot(isOnline = model.isOnline)
@@ -401,5 +398,6 @@ private fun buildContextSummary(ctx: com.example.ui.viewmodel.AiContext): String
     if (ctx.hotItems.isNotEmpty()) parts.add("\u70ED\u641C${ctx.hotItems.size}\u6761")
     if (ctx.news60s.isNotEmpty()) parts.add("60S${ctx.news60s.size}\u6761")
     if (ctx.oilEntries.isNotEmpty()) parts.add("\u6CB9\u4EF7\u6570\u636E")
+    if (ctx.goldMarkets.isNotEmpty()) parts.add("\u91D1\u4EF7\u6570\u636E")
     return if (parts.isNotEmpty()) "\u5DF2\u52A0\u8F7D: ${parts.joinToString(" / ")}" else ""
 }
