@@ -1,6 +1,6 @@
 {
-  "name": "聚合热搜",
-  "description": "实时聚合国内外各大主流平台的热搜榜单，支持微博、知乎、百度、抖音、哔哩哔哩、少数派、36氪、CSDN等平台的数据展示、快速检索、趋势跟踪与快捷跳转分享。",
+  "name": "综合资讯 · DailyHot-Android",
+  "description": "实时聚合国内外多平台热搜榜单（微博/知乎/百度/B站/NGA/小红书等40+平台），展示60秒快新闻、实时油价金价，并集成AI问答",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
