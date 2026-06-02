@@ -1081,6 +1081,8 @@ fun News60sContent(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Column(modifier = modifier.fillMaxSize()) {
         when (val state = news60sState) {
             is News60sUiState.Loading -> {
@@ -1104,6 +1106,11 @@ fun News60sContent(
             }
             is News60sUiState.Success -> {
                 val scrollState = rememberScrollState()
+                val allNewsText = remember(state.newsList) {
+                    state.newsList.mapIndexed { index, news ->
+                        "${index + 1}. $news"
+                    }.joinToString("\n")
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1111,6 +1118,25 @@ fun News60sContent(
                         .padding(horizontal = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { copyToClipboard(context, allNewsText) },
+                            enabled = allNewsText.isNotBlank()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "\u4E00\u952E\u590D\u523660\u79D2\u5168\u90E8\u65B0\u95FB",
+                                tint = Color(0xFF2196F3)
+                            )
+                        }
+                    }
+
                     state.newsList.forEachIndexed { index, news ->
                         News60sCard(index = index + 1, content = news)
                     }
