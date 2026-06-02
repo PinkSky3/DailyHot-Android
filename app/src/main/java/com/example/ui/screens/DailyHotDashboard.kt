@@ -53,6 +53,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CarCrash
@@ -105,10 +106,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1065,11 +1064,13 @@ fun GoldBankRecycleCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
-                text = entry.price,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
-                color = Color(0xFFD4A017)
-            )
+            SelectionContainer {
+                Text(
+                    text = entry.price,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                    color = Color(0xFFD4A017)
+                )
+            }
         }
     }
 }
@@ -1182,12 +1183,13 @@ fun News60sCard(
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = content,
-                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
+            SelectionContainer(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = content,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }
@@ -1298,17 +1300,21 @@ fun OilPriceCard(
                         .background(accentColor)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
+                SelectionContainer {
+                    Text(
+                        text = entry.label,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            SelectionContainer {
                 Text(
-                    text = entry.label,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = "\uFFE5${entry.price} /L",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                    color = accentColor
                 )
             }
-            Text(
-                text = "\uFFE5${entry.price} /L",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
-                color = accentColor
-            )
         }
     }
 }
@@ -1700,8 +1706,8 @@ fun TrendItemCard(
                             }
                         }
 
-                        if (item.hot != null && item.hot.value.isNotBlank()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (item.hot != null && item.hot.value.isNotBlank()) {
                                 Icon(
                                     imageVector = Icons.Default.Whatshot,
                                     contentDescription = "\u70ED\u5EA6",
@@ -1713,6 +1719,18 @@ fun TrendItemCard(
                                     text = formatHotNumber(item.hot.value),
                                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = onCopy,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "\u590D\u5236\u6587\u5B57",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -2005,7 +2023,7 @@ fun copyToClipboard(context: Context, text: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val clip = android.content.ClipData.newPlainText("hot_search_link", text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "\u94FE\u63A5\u4E0E\u6807\u9898\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F", Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
         Toast.makeText(context, "\u590D\u5236\u5931\u8D25", Toast.LENGTH_SHORT).show()
     }
