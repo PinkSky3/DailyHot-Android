@@ -92,7 +92,12 @@ class GoldPriceViewModel : ViewModel() {
         val root = JSONObject(body)
         if (!root.has("metals")) return null
 
-        val metals = root.optJSONArray("metals").orEmptyObjects().map { it.toMarketEntry() }
+        val metals = root.optJSONArray("metals").orEmptyObjects().map {
+            it.toMarketEntry().let { entry ->
+                if (entry.name.contains("\u7EBD\u7EA6\u9EC4\u91D1")) entry.copy(unit = "\u7F8E\u5143/\u76CE\u53F8")
+                else entry
+            }
+        }
         val brands = root.optJSONArray("stores").orEmptyObjects().map {
             GoldBrandEntry(
                 brand = it.clean("brand", "\u672A\u77E5\u54C1\u724C"),
