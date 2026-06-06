@@ -141,7 +141,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class DashboardMode {
-    NEWS_60S, HOT_SEARCH, ALL_HOT_SEARCH, OIL_PRICE, GOLD_PRICE
+    NEWS_60S, HOT_SEARCH, ALL_HOT_SEARCH, AI_DAILY_REPORT, OIL_PRICE, GOLD_PRICE
 }
 
 @Composable
@@ -172,6 +172,8 @@ fun DailyHotDashboard(
     val news60sState by news60sViewModel.uiState.collectAsState()
     var mode by remember { mutableStateOf(DashboardMode.NEWS_60S) }
     var selectedPlatformCategory by remember { mutableStateOf(PlatformCategory.ALL) }
+    var showAllHotSourcePicker by remember { mutableStateOf(false) }
+    var dailyReportRefreshToken by remember { mutableStateOf(0) }
     val displayPlatform = if (mode == DashboardMode.ALL_HOT_SEARCH) allHotActivePlatform else activePlatform
 
     val context = LocalContext.current
@@ -188,6 +190,12 @@ fun DailyHotDashboard(
         animationSpec = tween(durationMillis = 650),
         finishedListener = { isRotating = false }
     )
+
+    LaunchedEffect(mode) {
+        if (mode != DashboardMode.ALL_HOT_SEARCH) {
+            showAllHotSourcePicker = false
+        }
+    }
 
     // Update AI chat context when data changes
     LaunchedEffect(uiState, news60sState, oilState, goldState, selectedProvince) {
@@ -254,6 +262,7 @@ fun DailyHotDashboard(
                         when (mode) {
                             DashboardMode.HOT_SEARCH -> hotViewModel.refreshActivePlatform()
                             DashboardMode.ALL_HOT_SEARCH -> allHotViewModel.refreshActivePlatform()
+                            DashboardMode.AI_DAILY_REPORT -> dailyReportRefreshToken++
                             DashboardMode.OIL_PRICE -> oilViewModel.refresh()
                             DashboardMode.GOLD_PRICE -> goldViewModel.refresh()
                             DashboardMode.NEWS_60S -> news60sViewModel.refresh()
@@ -327,73 +336,90 @@ fun DailyHotDashboard(
                             allHotViewModel.ensureLoaded()
                         }
 
-                        AllHotCategoryBar(
-                            categories = allHotCategories,
-                            selectedCategoryKey = allHotActiveCategoryKey,
-                            accentColor = allHotActivePlatform.brandColor,
-                            onSelected = { allHotViewModel.selectCategory(it.key) }
-                        )
+                        if (showAllHotSourcePicker) {
+                            AllHotSourcePickerContent(
+                                categories = allHotCategories,
+                                selectedCategoryKey = allHotActiveCategoryKey,
+                                sources = allHotSources.filter { source ->
+                                    allHotActiveCategoryKey == "all" || source.categoryKey == allHotActiveCategoryKey
+                                },
+                                activeSource = allHotActiveSource,
+                                accentColor = allHotActivePlatform.brandColor,
+                                onCategorySelected = { allHotViewModel.selectCategory(it.key) },
+                                onSourceSelected = {
+                                    allHotViewModel.selectSource(it)
+                                    showAllHotSourcePicker = false
+                                },
+                                onClose = { showAllHotSourcePicker = false },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            AllHotSourceSelectorSummary(
+                                activeSource = allHotActiveSource,
+                                categoryCount = allHotCategories.size,
+                                sourceCount = allHotSources.size,
+                                accentColor = allHotActivePlatform.brandColor,
+                                onOpen = { showAllHotSourcePicker = true }
+                            )
 
-                        AllHotSourcesBar(
-                            sources = allHotSources.filter { source ->
-                                allHotActiveCategoryKey == "all" || source.categoryKey == allHotActiveCategoryKey
-                            },
-                            activeSource = allHotActiveSource,
-                            accentColor = allHotActivePlatform.brandColor,
-                            onSelected = { allHotViewModel.selectSource(it) }
-                        )
+                            SearchSection(
+                                query = allHotSearchQuery,
+                                onQueryChanged = { allHotViewModel.updateSearchQuery(it) },
+                                platform = allHotActivePlatform
+                            )
 
-                        SearchSection(
-                            query = allHotSearchQuery,
-                            onQueryChanged = { allHotViewModel.updateSearchQuery(it) },
-                            platform = allHotActivePlatform
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                        ) {
-                            when (val state = allHotUiState) {
-                                is AllHotUiState.Loading -> {
-                                    LoadingStateView(
-                                        platform = allHotActivePlatform,
-                                        subtitle = "通过 AllHot Open API 匹配数据源"
-                                    )
-                                }
-                                is AllHotUiState.Success -> {
-                                    AllHotSuccessStateView(
-                                        platform = allHotActivePlatform,
-                                        items = state.items,
-                                        updateTime = state.updateTime,
-                                        sourceTitle = state.sourceTitle,
-                                        sourceId = state.sourceId,
-                                        dataType = state.dataType,
-                                        totalCount = state.totalCount,
-                                        apiChannel = state.apiChannel,
-                                        onItemClicked = { item ->
-                                            if (item.url != null) {
-                                                previewUrl = item.url
-                                                previewTitle = item.title ?: "热搜-全面版详情"
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            ) {
+                                when (val state = allHotUiState) {
+                                    is AllHotUiState.Loading -> {
+                                        LoadingStateView(
+                                            platform = allHotActivePlatform,
+                                            subtitle = "通过 AllHot Open API 匹配数据源"
+                                        )
+                                    }
+                                    is AllHotUiState.Success -> {
+                                        AllHotSuccessStateView(
+                                            platform = allHotActivePlatform,
+                                            items = state.items,
+                                            updateTime = state.updateTime,
+                                            sourceTitle = state.sourceTitle,
+                                            sourceId = state.sourceId,
+                                            dataType = state.dataType,
+                                            totalCount = state.totalCount,
+                                            apiChannel = state.apiChannel,
+                                            onItemClicked = { item ->
+                                                if (item.url != null) {
+                                                    previewUrl = item.url
+                                                    previewTitle = item.title ?: "热搜-全面版详情"
+                                                }
+                                            },
+                                            onCopyItem = { item ->
+                                                copyToClipboard(context, (item.title ?: "暂无标题") + " " + (item.url ?: ""))
+                                            },
+                                            onShareItem = { item ->
+                                                shareText(context, "【热搜-全面版·${allHotActivePlatform.displayName}】${item.title ?: "暂无标题"}：${item.url ?: ""}")
                                             }
-                                        },
-                                        onCopyItem = { item ->
-                                            copyToClipboard(context, (item.title ?: "暂无标题") + " " + (item.url ?: ""))
-                                        },
-                                        onShareItem = { item ->
-                                            shareText(context, "【热搜-全面版·${allHotActivePlatform.displayName}】${item.title ?: "暂无标题"}：${item.url ?: ""}")
-                                        }
-                                    )
-                                }
-                                is AllHotUiState.Error -> {
-                                    ErrorStateView(
-                                        message = state.message,
-                                        onRetry = { allHotViewModel.refreshActivePlatform() },
-                                        platform = allHotActivePlatform
-                                    )
+                                        )
+                                    }
+                                    is AllHotUiState.Error -> {
+                                        ErrorStateView(
+                                            message = state.message,
+                                            onRetry = { allHotViewModel.refreshActivePlatform() },
+                                            platform = allHotActivePlatform
+                                        )
+                                    }
                                 }
                             }
                         }
+                    }
+                    DashboardMode.AI_DAILY_REPORT -> {
+                        AllHotDailyReportContent(
+                            refreshToken = dailyReportRefreshToken,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                     DashboardMode.OIL_PRICE -> {
                         OilPriceContent(
@@ -485,6 +511,7 @@ fun HeaderSection(
                                 DashboardMode.NEWS_60S -> Color(0xFF2196F3).copy(alpha = 0.15f)
                                 DashboardMode.HOT_SEARCH -> activePlatform.brandColor.copy(alpha = 0.15f)
                                 DashboardMode.ALL_HOT_SEARCH -> activePlatform.brandColor.copy(alpha = 0.18f)
+                                DashboardMode.AI_DAILY_REPORT -> Color(0xFF2F7D6D).copy(alpha = 0.16f)
                                 DashboardMode.OIL_PRICE -> Color(0xFFFF6B35).copy(alpha = 0.15f)
                                 DashboardMode.GOLD_PRICE -> Color(0xFFD4A017).copy(alpha = 0.16f)
                             }
@@ -496,6 +523,7 @@ fun HeaderSection(
                             DashboardMode.NEWS_60S -> "\uD83D\uDCF0"
                             DashboardMode.HOT_SEARCH -> activePlatform.infoEmoji
                             DashboardMode.ALL_HOT_SEARCH -> "\uD83D\uDD25"
+                            DashboardMode.AI_DAILY_REPORT -> "\uD83E\uDDE0"
                             DashboardMode.OIL_PRICE -> "\u26FD"
                             DashboardMode.GOLD_PRICE -> "\uD83E\uDE99"
                         },
@@ -507,6 +535,7 @@ fun HeaderSection(
                         DashboardMode.NEWS_60S -> "60\u79D2\u8BFB\u4E16\u754C"
                         DashboardMode.HOT_SEARCH -> "\u591A\u5E73\u53F0\u70ED\u641C"
                         DashboardMode.ALL_HOT_SEARCH -> "热搜-全面版"
+                        DashboardMode.AI_DAILY_REPORT -> "AI日报"
                         DashboardMode.OIL_PRICE -> "\u6CB9\u4EF7\u67E5\u8BE2"
                         DashboardMode.GOLD_PRICE -> "\u91D1\u4EF7\u67E5\u8BE2"
                     },
@@ -548,6 +577,7 @@ fun HeaderSection(
                             DashboardMode.NEWS_60S -> Color(0xFF2196F3)
                             DashboardMode.HOT_SEARCH -> activePlatform.brandColor
                             DashboardMode.ALL_HOT_SEARCH -> activePlatform.brandColor
+                            DashboardMode.AI_DAILY_REPORT -> Color(0xFF2F7D6D)
                             DashboardMode.OIL_PRICE -> Color(0xFFFF6B35)
                             DashboardMode.GOLD_PRICE -> Color(0xFFD4A017)
                         },
@@ -582,6 +612,7 @@ fun ModeToggle(
         DashboardModeOption(DashboardMode.NEWS_60S, "60S", Color(0xFF2196F3)),
         DashboardModeOption(DashboardMode.HOT_SEARCH, "热搜", Color(0xFFFF6B35)),
         DashboardModeOption(DashboardMode.ALL_HOT_SEARCH, "热搜-全面版", Color(0xFF2F7D6D)),
+        DashboardModeOption(DashboardMode.AI_DAILY_REPORT, "AI日报", Color(0xFF2F7D6D)),
         DashboardModeOption(DashboardMode.OIL_PRICE, "油价", Color(0xFFFF6B35)),
         DashboardModeOption(DashboardMode.GOLD_PRICE, "金价", Color(0xFFD4A017))
     )
@@ -1407,6 +1438,210 @@ fun OilPriceCard(
             }
         }
     }
+}
+
+@Composable
+fun AllHotSourceSelectorSummary(
+    activeSource: AllHotSourceOption?,
+    categoryCount: Int,
+    sourceCount: Int,
+    accentColor: Color,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onOpen() },
+        color = accentColor.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = activeSource?.title ?: "选择 AllHot 来源",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = "分类 $categoryCount · 来源 $sourceCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f)
+                )
+            }
+            Text(
+                text = "切换",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = accentColor
+            )
+        }
+    }
+}
+
+@Composable
+fun AllHotSourcePickerContent(
+    categories: List<AllHotSourceCategory>,
+    selectedCategoryKey: String,
+    sources: List<AllHotSourceOption>,
+    activeSource: AllHotSourceOption?,
+    accentColor: Color,
+    onCategorySelected: (AllHotSourceCategory) -> Unit,
+    onSourceSelected: (AllHotSourceOption) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(top = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "AllHot 来源分类",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "分类来自 AllHot sources 返回的数据",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f)
+                )
+            }
+            IconButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "关闭分类界面",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        AllHotCategoryBar(
+            categories = categories,
+            selectedCategoryKey = selectedCategoryKey,
+            accentColor = accentColor,
+            onSelected = onCategorySelected
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (sources.isEmpty()) {
+                item {
+                    Text(
+                        text = "当前分类没有可用来源",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            } else {
+                items(sources, key = { it.id }) { source ->
+                    AllHotSourcePickerRow(
+                        source = source,
+                        selected = activeSource?.id == source.id,
+                        accentColor = accentColor,
+                        onSelected = { onSourceSelected(source) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AllHotSourcePickerRow(
+    source: AllHotSourceOption,
+    selected: Boolean,
+    accentColor: Color,
+    onSelected: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onSelected() },
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) accentColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = source.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = "${source.categoryName} · ID #${source.id}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f)
+                )
+            }
+            if (selected) {
+                Text(
+                    text = "当前",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                    color = accentColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AllHotDailyReportContent(
+    refreshToken: Int,
+    modifier: Modifier = Modifier
+) {
+    val reportUrl = "https://allhot.top/daily-report"
+    var lastRefreshToken by remember { mutableStateOf(refreshToken) }
+
+    AndroidView(
+        modifier = modifier.fillMaxSize(),
+        factory = { context ->
+            WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                webChromeClient = WebChromeClient()
+                webViewClient = WebViewClient()
+                loadUrl(reportUrl)
+            }
+        },
+        update = { webView ->
+            if (lastRefreshToken != refreshToken) {
+                lastRefreshToken = refreshToken
+                webView.reload()
+            }
+        }
+    )
 }
 
 @Composable
