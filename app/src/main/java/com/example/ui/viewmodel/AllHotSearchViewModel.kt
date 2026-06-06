@@ -48,6 +48,16 @@ data class AllHotSourceOption(
     val rawType: String?
 )
 
+private data class AllHotSourceSnapshot(
+    val items: List<HotSearchItem>,
+    val fetchedTime: String?,
+    val sourceTitle: String,
+    val sourceId: Int,
+    val dataType: String?,
+    val totalCount: Int?,
+    val apiChannel: String
+)
+
 class AllHotSearchViewModel : ViewModel() {
 
     private val _activePlatform = MutableStateFlow(HotPlatform.WEIBO)
@@ -82,6 +92,7 @@ class AllHotSearchViewModel : ViewModel() {
 
     private var fetchJob: Job? = null
     private var hasLoadedOnce = false
+    private val sourceDataCache = mutableMapOf<Int, AllHotSourceSnapshot>()
 
     fun ensureLoaded() {
         if (!hasLoadedOnce) {
@@ -92,11 +103,6 @@ class AllHotSearchViewModel : ViewModel() {
     fun selectCategory(categoryKey: String) {
         if (_activeCategoryKey.value == categoryKey) return
         _activeCategoryKey.value = categoryKey
-
-        val active = _activeSource.value
-        if (active == null || !sourceMatchesCategory(active, categoryKey)) {
-            sourcesForCategory(categoryKey).firstOrNull()?.let { selectSource(it) }
-        }
     }
 
     fun selectSource(source: AllHotSourceOption) {
@@ -105,6 +111,14 @@ class AllHotSearchViewModel : ViewModel() {
         }
         setActiveSource(source)
         _searchQuery.value = ""
+
+        val cached = sourceDataCache[source.id]
+        if (cached != null) {
+            fetchJob?.cancel()
+            applySourceSnapshot(cached)
+            return
+        }
+
         fetchSourceData(source)
     }
 
@@ -118,10 +132,12 @@ class AllHotSearchViewModel : ViewModel() {
     }
 
     fun refreshActiveSource() {
-        val source = _activeSource.value
+        val source = _activeSource.value ?: _sourceOptions.value.firstOrNull()
         if (source == null) {
             loadSourcesAndSelectInitial(forceReload = true)
         } else {
+            setActiveSource(source)
+            sourceDataCache.remove(source.id)
             fetchSourceData(source)
         }
     }
@@ -129,10 +145,13 @@ class AllHotSearchViewModel : ViewModel() {
     private fun loadSourcesAndSelectInitial(forceReload: Boolean = false) {
         if (!forceReload && _sourceOptions.value.isNotEmpty()) {
             (_activeSource.value ?: _sourceOptions.value.firstOrNull())?.let { source ->
-                setActiveSource(source)
-                fetchSourceData(source)
+                selectSource(source)
             }
             return
+        }
+
+        if (forceReload) {
+            sourceDataCache.clear()
         }
 
         hasLoadedOnce = true
@@ -287,14 +306,6 @@ class AllHotSearchViewModel : ViewModel() {
         _activePlatform.value = inferVisualPlatform(source.title)
     }
 
-    private fun sourcesForCategory(categoryKey: String): List<AllHotSourceOption> {
-        return _sourceOptions.value.filter { sourceMatchesCategory(it, categoryKey) }
-    }
-
-    private fun sourceMatchesCategory(source: AllHotSourceOption, categoryKey: String): Boolean {
-        return categoryKey == ALL_HOT_ALL_CATEGORY_KEY || source.categoryKey == categoryKey
-    }
-
     private fun AllHotSource.toSourceOption(): AllHotSourceOption? {
         val sourceId = id ?: return null
         val sourceTitle = displayTitle().takeIf { it.isNotBlank() } ?: return null
@@ -310,20 +321,55 @@ class AllHotSearchViewModel : ViewModel() {
 
     private fun inferCategory(source: AllHotSource, sourceTitle: String): AllHotSourceCategory {
         val rawType = source.type?.trim()
-        if (!rawType.isNullOrBlank() && rawType != sourceTitle) {
-            return AllHotSourceCategory(rawType.categoryKey(), rawType, 0)
+        val normalized = listOfNotNull(sourceTitle, rawType).joinToString(" ").normalize()
+        val categoryName = inferKeywordCategory(normalized)
+            ?: rawType?.takeIf { it.isNotBlank() }?.takeUnless { it.isGenericAllHotCategory() || it == sourceTitle }?.trim()
+            ?: inferFallbackCategory(sourceTitle)
+        return AllHotSourceCategory(categoryName.categoryKey(), categoryName, 0)
+    }
+
+    private fun inferKeywordCategory(normalized: String): String? {
+        return when {
+            normalized.hasAny("ai日报", "ai工具", "ai资讯", "gpt", "openai", "claude", "gemini", "llm", "人工智能", "大模型", "机器学习") -> "AI"
+            normalized.hasAny("github", "hellogithub", "csdn", "掘金", "v2ex", "51cto", "stackoverflow", "hacker", "开发", "编程", "前端", "后端", "代码", "开源") -> "开发技术"
+            normalized.hasAny("it之家", "ithome", "数码", "科技", "苹果", "小米", "华为", "安卓", "android", "iphone", "手机", "酷安") -> "数码科技"
+            normalized.hasAny("财经", "股票", "证券", "基金", "比特币", "crypto", "coin", "汇率", "金价", "油价", "商业", "36kr", "36氪") -> "财经商业"
+            normalized.hasAny("淘宝", "京东", "拼多多", "值得买", "电商", "消费", "优惠", "什么值得买") -> "电商消费"
+            normalized.hasAny("虎扑", "nba", "cba", "足球", "体育", "篮球", "英超", "欧冠") -> "体育"
+            normalized.hasAny("汽车", "懂车帝", "车市", "新能源车", "特斯拉") -> "汽车"
+            normalized.hasAny("教育", "学习", "考研", "学术", "论文", "微信读书", "简书", "读书") -> "教育学习"
+            normalized.hasAny("producthunt", "figma", "dribbble", "设计", "产品") -> "设计产品"
+            normalized.hasAny("reddit", "youtube", "twitter", "hackernews", "githubtrending", "海外") -> "海外"
+            normalized.hasAny("微博", "知乎", "贴吧", "nodeseek", "豆瓣小组", "社区", "论坛", "nga") -> "社区"
+            normalized.hasAny("头条", "新闻", "澎湃", "网易", "腾讯", "新浪", "虎嗅", "爱范儿", "少数派", "日报", "资讯") -> "资讯"
+            normalized.hasAny("b站", "哔哩", "bilibili", "acfun", "抖音", "电影", "lol", "原神", "崩坏", "星穹", "游戏", "娱乐", "影视", "番剧") -> "文娱"
+            normalized.hasAny("地震", "天气", "气象", "历史", "生活", "健康", "医疗") -> "生活"
+            else -> null
+        }
+    }
+
+    private fun inferFallbackCategory(sourceTitle: String): String {
+        val normalized = sourceTitle.normalize()
+        val firstChinese = normalized.firstOrNull { it.isCjk() }
+        if (firstChinese != null) {
+            return when (firstChinese) {
+                in '\u4e00'..'\u5fff' -> "其他·中文一"
+                in '\u6000'..'\u7fff' -> "其他·中文二"
+                in '\u8000'..'\u9fff' -> "其他·中文三"
+                else -> "其他·中文"
+            }
         }
 
-        val normalized = sourceTitle.normalize()
-        val categoryName = when {
-            listOf("微博", "知乎", "贴吧", "v2ex", "nodeseek", "豆瓣小组").any { normalized.contains(it.normalize()) } -> "社区"
-            listOf("头条", "新闻", "澎湃", "网易", "腾讯", "新浪", "虎嗅", "爱范儿", "少数派").any { normalized.contains(it.normalize()) } -> "资讯"
-            listOf("b站", "哔哩", "acfun", "抖音", "电影", "虎扑", "lol", "原神", "崩坏", "星穹").any { normalized.contains(it.normalize()) } -> "文娱"
-            listOf("github", "csdn", "掘金", "51cto", "ithome", "it之家").any { normalized.contains(it.normalize()) } -> "科技"
-            listOf("地震", "天气", "气象", "历史").any { normalized.contains(it.normalize()) } -> "生活"
-            else -> "其他"
+        val first = normalized.firstOrNull()
+        return when {
+            first == null -> "其他·未命名"
+            first.isDigit() -> "其他·数字"
+            first in 'a'..'f' -> "其他·A-F"
+            first in 'g'..'l' -> "其他·G-L"
+            first in 'm'..'r' -> "其他·M-R"
+            first in 's'..'z' -> "其他·S-Z"
+            else -> "其他·符号"
         }
-        return AllHotSourceCategory(categoryName.categoryKey(), categoryName, 0)
     }
 
     private fun inferVisualPlatform(sourceTitle: String): HotPlatform {
@@ -379,14 +425,19 @@ class AllHotSearchViewModel : ViewModel() {
                     continue
                 }
 
-                currentSourceTitle = source.title
-                currentSourceId = source.id
-                currentDataType = data?.dataType ?: source.rawType
-                currentTotalCount = data?.total
-                currentApiChannel = channel.label
-                _rawItems.value = items
-                _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                applyFilter()
+                val snapshot = AllHotSourceSnapshot(
+                    items = items,
+                    fetchedTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()),
+                    sourceTitle = source.title,
+                    sourceId = source.id,
+                    dataType = data?.dataType ?: source.rawType,
+                    totalCount = data?.total,
+                    apiChannel = channel.label
+                )
+                sourceDataCache[source.id] = snapshot
+                if (_activeSource.value?.id == source.id) {
+                    applySourceSnapshot(snapshot)
+                }
                 return true
             } catch (e: Exception) {
                 lastError = "AllHot ${channel.label}接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}"
@@ -409,6 +460,17 @@ class AllHotSearchViewModel : ViewModel() {
         currentDataType = null
         currentTotalCount = null
         currentApiChannel = ""
+    }
+
+    private fun applySourceSnapshot(snapshot: AllHotSourceSnapshot) {
+        currentSourceTitle = snapshot.sourceTitle
+        currentSourceId = snapshot.sourceId
+        currentDataType = snapshot.dataType
+        currentTotalCount = snapshot.totalCount
+        currentApiChannel = snapshot.apiChannel
+        _rawItems.value = snapshot.items
+        _fetchedTime.value = snapshot.fetchedTime
+        applyFilter()
     }
 
     private fun sourceKeywords(platform: HotPlatform): List<String> {
@@ -529,6 +591,20 @@ class AllHotSearchViewModel : ViewModel() {
             .replace("热榜", "")
             .replace("榜单", "")
     }
+
+    private fun String.hasAny(vararg keywords: String): Boolean {
+        return keywords.any { keyword ->
+            val normalizedKeyword = keyword.normalize()
+            normalizedKeyword.isNotBlank() && contains(normalizedKeyword)
+        }
+    }
+
+    private fun String.isGenericAllHotCategory(): Boolean {
+        val normalized = normalize()
+        return normalized in setOf("其他", "other", "others", "misc", "全部", "all", "综合", "默认", "未知", "未分类")
+    }
+
+    private fun Char.isCjk(): Boolean = this in '\u4e00'..'\u9fff'
 
     private fun String.categoryKey(): String {
         return normalize()

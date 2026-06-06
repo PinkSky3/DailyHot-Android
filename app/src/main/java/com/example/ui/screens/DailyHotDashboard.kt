@@ -141,7 +141,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class DashboardMode {
-    NEWS_60S, HOT_SEARCH, ALL_HOT_SEARCH, AI_DAILY_REPORT, OIL_PRICE, GOLD_PRICE
+    NEWS_60S, AI_DAILY_REPORT, HOT_SEARCH, ALL_HOT_SEARCH, OIL_PRICE, GOLD_PRICE
 }
 
 @Composable
@@ -274,6 +274,12 @@ fun DailyHotDashboard(
                 when (mode) {
                     DashboardMode.NEWS_60S -> {
                         News60sContent(news60sState = news60sState, onRefresh = { news60sViewModel.refresh() })
+                    }
+                    DashboardMode.AI_DAILY_REPORT -> {
+                        AllHotDailyReportContent(
+                            refreshToken = dailyReportRefreshToken,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                     DashboardMode.HOT_SEARCH -> {
                         PlatformCategoryBar(
@@ -414,12 +420,6 @@ fun DailyHotDashboard(
                                 }
                             }
                         }
-                    }
-                    DashboardMode.AI_DAILY_REPORT -> {
-                        AllHotDailyReportContent(
-                            refreshToken = dailyReportRefreshToken,
-                            modifier = Modifier.weight(1f)
-                        )
                     }
                     DashboardMode.OIL_PRICE -> {
                         OilPriceContent(
@@ -610,9 +610,9 @@ fun ModeToggle(
 ) {
     val options = listOf(
         DashboardModeOption(DashboardMode.NEWS_60S, "60S", Color(0xFF2196F3)),
+        DashboardModeOption(DashboardMode.AI_DAILY_REPORT, "AI日报", Color(0xFF2F7D6D)),
         DashboardModeOption(DashboardMode.HOT_SEARCH, "热搜", Color(0xFFFF6B35)),
         DashboardModeOption(DashboardMode.ALL_HOT_SEARCH, "热搜-全面版", Color(0xFF2F7D6D)),
-        DashboardModeOption(DashboardMode.AI_DAILY_REPORT, "AI日报", Color(0xFF2F7D6D)),
         DashboardModeOption(DashboardMode.OIL_PRICE, "油价", Color(0xFFFF6B35)),
         DashboardModeOption(DashboardMode.GOLD_PRICE, "金价", Color(0xFFD4A017))
     )
