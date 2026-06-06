@@ -52,6 +52,7 @@ jobs:
         {
           echo "AI_API_KEY=CI_PLACEHOLDER"
           echo "ALLHOT_API_KEY=CI_PLACEHOLDER"
+          echo "ALLHOT_BACKUP_API_KEY=CI_PLACEHOLDER"
         } > .env
 
     - name: Build Debug APK

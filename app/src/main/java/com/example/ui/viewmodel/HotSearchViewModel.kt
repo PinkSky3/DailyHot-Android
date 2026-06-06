@@ -26,7 +26,8 @@ sealed interface UiState {
         val sourceTitle: String,
         val sourceId: Int?,
         val dataType: String?,
-        val totalCount: Int?
+        val totalCount: Int?,
+        val apiChannel: String
     ) : UiState
     data class Error(val message: String, val lastSuccessItems: List<HotSearchItem>? = null) : UiState
 }
@@ -46,6 +47,7 @@ class HotSearchViewModel : ViewModel() {
     private var currentSourceId: Int? = null
     private var currentDataType: String? = null
     private var currentTotalCount: Int? = null
+    private var currentApiChannel: String = ""
 
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -84,58 +86,74 @@ class HotSearchViewModel : ViewModel() {
         currentSourceId = null
         currentDataType = null
         currentTotalCount = null
+        currentApiChannel = ""
 
         fetchJob = viewModelScope.launch {
-            if (BuildConfig.ALLHOT_OPEN_API_KEY.isBlank()) {
-                _uiState.value = UiState.Error("AllHot API key 未配置。请在本地 .env 或 GitHub Secrets 中设置 ALLHOT_API_KEY。")
+            val credentials = allHotCredentials()
+            if (credentials.isEmpty()) {
+                _uiState.value = UiState.Error("AllHot API key 未配置。请在本地 .env 或 GitHub Secrets 中设置 ALLHOT_API_KEY，备用可设置 ALLHOT_BACKUP_API_KEY。")
                 return@launch
             }
 
-            try {
-                val source = resolveAllHotSource(platform)
-                val sourceId = source?.id
-                if (sourceId == null) {
-                    _uiState.value = UiState.Error("AllHot 没有匹配到「${platform.displayName}」数据源，请换一个平台或刷新后重试。")
-                    return@launch
-                }
+            var lastError = ""
+            for (credential in credentials) {
+                try {
+                    val source = resolveAllHotSource(platform, credential.apiKey)
+                    val sourceId = source?.id
+                    if (sourceId == null) {
+                        lastError = "AllHot ${credential.label}没有匹配到「${platform.displayName}」数据源。"
+                        continue
+                    }
 
-                val response = RetrofitClient.allHotApi.getSourceData(id = sourceId)
-                if (!response.isSuccessful) {
-                    _uiState.value = UiState.Error(formatHttpError("AllHot 榜单数据请求失败", response.code()))
-                    return@launch
-                }
+                    val response = RetrofitClient.allHotApi.getSourceData(apiKey = credential.apiKey, id = sourceId)
+                    if (!response.isSuccessful) {
+                        lastError = formatHttpError("AllHot ${credential.label}榜单数据请求失败", response.code())
+                        continue
+                    }
 
-                val body = response.body()
-                if (!isSuccessCode(body?.code)) {
-                    _uiState.value = UiState.Error(body?.message ?: body?.msg ?: "AllHot 榜单数据返回异常。")
-                    return@launch
-                }
+                    val body = response.body()
+                    if (!isSuccessCode(body?.code)) {
+                        lastError = body?.message ?: body?.msg ?: "AllHot ${credential.label}榜单数据返回异常。"
+                        continue
+                    }
 
-                val data = body?.data
-                val items = data?.list.orEmpty().mapNotNull { it.toHotSearchItem() }
-                if (items.isEmpty()) {
-                    _uiState.value = UiState.Error("AllHot 返回了空榜单：${source.displayTitle()}。")
-                    return@launch
-                }
+                    val data = body?.data
+                    val items = data?.list.orEmpty().mapNotNull { it.toHotSearchItem() }
+                    if (items.isEmpty()) {
+                        lastError = "AllHot ${credential.label}返回了空榜单：${source.displayTitle()}。"
+                        continue
+                    }
 
-                currentSourceTitle = source.displayTitle()
-                currentSourceId = sourceId
-                currentDataType = data?.dataType
-                currentTotalCount = data?.total
-                _rawItems.value = items
-                _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                applyFilter()
-            } catch (e: Exception) {
-                _uiState.value = UiState.Error("AllHot 接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}")
+                    currentSourceTitle = source.displayTitle()
+                    currentSourceId = sourceId
+                    currentDataType = data?.dataType
+                    currentTotalCount = data?.total
+                    currentApiChannel = credential.label
+                    _rawItems.value = items
+                    _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    applyFilter()
+                    return@launch
+                } catch (e: Exception) {
+                    lastError = "AllHot ${credential.label}接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}"
+                }
             }
+
+            _uiState.value = UiState.Error(lastError.ifBlank { "AllHot 主备 key 均不可用，请检查 ALLHOT_API_KEY 和 ALLHOT_BACKUP_API_KEY。" })
         }
     }
 
-    private suspend fun resolveAllHotSource(platform: HotPlatform): AllHotSource? {
+    private fun allHotCredentials(): List<AllHotCredential> {
+        return listOf(
+            AllHotCredential("主通道", BuildConfig.ALLHOT_OPEN_API_KEY),
+            AllHotCredential("备用通道", BuildConfig.ALLHOT_BACKUP_OPEN_API_KEY)
+        ).filter { it.apiKey.isNotBlank() }.distinctBy { it.apiKey }
+    }
+
+    private suspend fun resolveAllHotSource(platform: HotPlatform, apiKey: String): AllHotSource? {
         sourceCache[platform]?.let { return it }
 
         for (keyword in sourceKeywords(platform)) {
-            val response = RetrofitClient.allHotApi.searchSources(keyword)
+            val response = RetrofitClient.allHotApi.searchSources(apiKey = apiKey, keyword = keyword)
             if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
             val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, keyword)
             if (source?.id != null) {
@@ -145,7 +163,7 @@ class HotSearchViewModel : ViewModel() {
         }
 
         for (page in 1..3) {
-            val response = RetrofitClient.allHotApi.getSources(page = page)
+            val response = RetrofitClient.allHotApi.getSources(apiKey = apiKey, page = page)
             if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
             val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, platform.displayName)
             if (source?.id != null) {
@@ -270,7 +288,8 @@ class HotSearchViewModel : ViewModel() {
             sourceTitle = currentSourceTitle.ifBlank { _activePlatform.value.displayName },
             sourceId = currentSourceId,
             dataType = currentDataType,
-            totalCount = currentTotalCount
+            totalCount = currentTotalCount,
+            apiChannel = currentApiChannel.ifBlank { "主通道" }
         )
     }
 
@@ -278,7 +297,7 @@ class HotSearchViewModel : ViewModel() {
 
     private fun formatHttpError(prefix: String, code: Int): String {
         return when (code) {
-            401, 403 -> "$prefix：鉴权失败，请检查 ALLHOT_API_KEY。"
+            401, 403 -> "$prefix：鉴权失败，请检查 ALLHOT_API_KEY / ALLHOT_BACKUP_API_KEY。"
             else -> "$prefix：HTTP $code。"
         }
     }
@@ -298,4 +317,9 @@ class HotSearchViewModel : ViewModel() {
             .replace("热榜", "")
             .replace("榜单", "")
     }
+
+    private data class AllHotCredential(
+        val label: String,
+        val apiKey: String
+    )
 }

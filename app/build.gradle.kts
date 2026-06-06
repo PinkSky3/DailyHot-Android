@@ -36,6 +36,7 @@ android {
 
     buildConfigField("String", "PEAR_AI_API_KEY", readSecret("PEAR_AI_API_KEY", "AI_API_KEY").asBuildConfigString())
     buildConfigField("String", "ALLHOT_OPEN_API_KEY", readSecret("ALLHOT_API_KEY", "ALLHOT_API_KEY").asBuildConfigString())
+    buildConfigField("String", "ALLHOT_BACKUP_OPEN_API_KEY", readSecret("ALLHOT_BACKUP_API_KEY", "ALLHOT_BACKUP_API_KEY").asBuildConfigString())
   }
 
   signingConfigs {

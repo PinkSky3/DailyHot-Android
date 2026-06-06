@@ -287,6 +287,7 @@ fun DailyHotDashboard(
                                         sourceId = state.sourceId,
                                         dataType = state.dataType,
                                         totalCount = state.totalCount,
+                                        apiChannel = state.apiChannel,
                                         onItemClicked = { item ->
                                             if (item.url != null) {
                                                 previewUrl = item.url
@@ -1547,6 +1548,7 @@ fun SuccessStateView(
     sourceId: Int?,
     dataType: String?,
     totalCount: Int?,
+    apiChannel: String,
     onItemClicked: (HotSearchItem) -> Unit,
     onCopyItem: (HotSearchItem) -> Unit,
     onShareItem: (HotSearchItem) -> Unit,
@@ -1562,6 +1564,7 @@ fun SuccessStateView(
                 sourceId = sourceId,
                 dataType = dataType,
                 totalCount = totalCount,
+                apiChannel = apiChannel,
                 itemCount = items.size,
                 updateTime = updateTime
             )
@@ -1596,6 +1599,7 @@ fun AllHotSourceSummary(
     sourceId: Int?,
     dataType: String?,
     totalCount: Int?,
+    apiChannel: String,
     itemCount: Int,
     updateTime: String?,
     modifier: Modifier = Modifier
@@ -1625,6 +1629,7 @@ fun AllHotSourceSummary(
                     text = buildString {
                         append("AllHot Open API")
                         if (sourceId != null) append(" · ID #$sourceId")
+                        if (apiChannel.isNotBlank()) append(" · $apiChannel")
                         if (!dataType.isNullOrBlank()) append(" · $dataType")
                     },
                     style = MaterialTheme.typography.bodySmall,

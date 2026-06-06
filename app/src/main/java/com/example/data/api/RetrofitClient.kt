@@ -40,14 +40,6 @@ object RetrofitClient {
         chain.proceed(request)
     }
 
-    private val allHotAuthInterceptor = Interceptor { chain ->
-        val builder = chain.request().newBuilder()
-        if (BuildConfig.ALLHOT_OPEN_API_KEY.isNotBlank()) {
-            builder.addHeader("X-API-Key", BuildConfig.ALLHOT_OPEN_API_KEY)
-        }
-        chain.proceed(builder.build())
-    }
-
     private val pearApiClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
@@ -56,7 +48,6 @@ object RetrofitClient {
         .build()
 
     private val allHotApiClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(allHotAuthInterceptor)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

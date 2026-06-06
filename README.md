@@ -65,6 +65,7 @@
 ```bash
 AI_API_KEY=sk-xxx
 ALLHOT_API_KEY=your-allhot-api-key
+ALLHOT_BACKUP_API_KEY=your-backup-allhot-api-key
 ```
 
 构建 Debug APK：
@@ -89,8 +90,9 @@ API key 不应写入源码。仓库默认 GitHub Actions 会生成不含 API key
 | --- | --- |
 | `PEAR_AI_API_KEY` | `sk-xxx` |
 | `ALLHOT_API_KEY` | `your-allhot-api-key` |
+| `ALLHOT_BACKUP_API_KEY` | `your-backup-allhot-api-key` |
 
-公开上传的 APK 不会注入上述 Secrets；如需带 key 的可运行版本，请在本地使用 `.env` 构建，或改为后端代理方式保存密钥。
+热搜请求会优先使用 `ALLHOT_API_KEY`，主 key 不可用时自动切换到 `ALLHOT_BACKUP_API_KEY`。公开上传的 APK 不会注入上述 Secrets；如需带 key 的可运行版本，请在本地使用 `.env` 构建，或改为后端代理方式保存密钥。
 
 ## 数据来源
 
