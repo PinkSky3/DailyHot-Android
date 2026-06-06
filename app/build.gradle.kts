@@ -19,15 +19,23 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    val envKey = System.getenv("PEAR_AI_API_KEY")
-    val aiApiKey = if (!envKey.isNullOrBlank()) envKey
-    else try {
-      rootProject.file(".env").readLines()
-        .firstOrNull { it.startsWith("AI_API_KEY=") }
-        ?.removePrefix("AI_API_KEY=")
-        ?: ""
-    } catch (_: Exception) { "" }
-    buildConfigField("String", "PEAR_AI_API_KEY", "\"$aiApiKey\"")
+    fun readSecret(envName: String, dotEnvName: String): String {
+      val envValue = System.getenv(envName)
+      if (!envValue.isNullOrBlank()) return envValue
+      return try {
+        rootProject.file(".env").readLines()
+          .firstOrNull { it.startsWith("$dotEnvName=") }
+          ?.substringAfter("=")
+          ?.trim()
+          ?: ""
+      } catch (_: Exception) { "" }
+    }
+
+    fun String.asBuildConfigString(): String =
+      "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+    buildConfigField("String", "PEAR_AI_API_KEY", readSecret("PEAR_AI_API_KEY", "AI_API_KEY").asBuildConfigString())
+    buildConfigField("String", "ALLHOT_API_KEY", readSecret("ALLHOT_API_KEY", "ALLHOT_API_KEY").asBuildConfigString())
   }
 
   signingConfigs {

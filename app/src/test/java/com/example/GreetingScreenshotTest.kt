@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.example.data.model.HotPlatform
+import com.example.ui.screens.DashboardMode
 import com.example.ui.screens.HeaderSection
 import com.example.ui.screens.PlatformsBar
 import com.example.ui.screens.SearchSection
@@ -33,6 +34,8 @@ class GreetingScreenshotTest {
         Column(modifier = Modifier.fillMaxSize()) {
           HeaderSection(
             activePlatform = HotPlatform.WEIBO,
+            mode = DashboardMode.HOT_SEARCH,
+            onModeChange = {},
             onRefresh = {},
             rotationAngle = 0f
           )

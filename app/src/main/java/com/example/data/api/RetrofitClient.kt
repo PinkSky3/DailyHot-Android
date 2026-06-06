@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
     private const val BASE_URL = "https://dailyhotapi.3yu3.top/"
     private const val PEAR_API_BASE_URL = "https://api.pearapi.ai/"
+    private const val ALLHOT_API_BASE_URL = "https://api.allhot.top/api/open/v1/"
 
     private val moshi: Moshi = Moshi.Builder()
         .add(CoercedStringAdapter())
@@ -22,6 +23,8 @@ object RetrofitClient {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
+        redactHeader("Authorization")
+        redactHeader("X-API-Key")
     }
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
@@ -37,11 +40,26 @@ object RetrofitClient {
         chain.proceed(request)
     }
 
+    private val allHotAuthInterceptor = Interceptor { chain ->
+        val builder = chain.request().newBuilder()
+        if (BuildConfig.ALLHOT_API_KEY.isNotBlank()) {
+            builder.addHeader("X-API-Key", BuildConfig.ALLHOT_API_KEY)
+        }
+        chain.proceed(builder.build())
+    }
+
     private val pearApiClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .build()
+
+    private val allHotApiClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(allHotAuthInterceptor)
+        .addInterceptor(loggingInterceptor)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     private val retrofit: Retrofit = Retrofit.Builder()
@@ -56,9 +74,16 @@ object RetrofitClient {
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
 
+    private val allHotRetrofit: Retrofit = Retrofit.Builder()
+        .baseUrl(ALLHOT_API_BASE_URL)
+        .client(allHotApiClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .build()
+
     val apiService: DailyHotApiService = retrofit.create(DailyHotApiService::class.java)
     val oilPriceApi: OilPriceApiService = pearRetrofit.create(OilPriceApiService::class.java)
     val news60sApi: News60sApiService = pearRetrofit.create(News60sApiService::class.java)
     val aiChatApi: AiChatApiService = pearRetrofit.create(AiChatApiService::class.java)
     val goldPriceApi: GoldPriceApiService = retrofit.create(GoldPriceApiService::class.java)
+    val allHotApi: AllHotApiService = allHotRetrofit.create(AllHotApiService::class.java)
 }

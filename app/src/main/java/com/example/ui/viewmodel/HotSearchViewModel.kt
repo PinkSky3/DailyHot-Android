@@ -2,7 +2,10 @@ package com.example.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.data.api.RetrofitClient
+import com.example.data.model.AllHotNewsItem
+import com.example.data.model.AllHotSource
 import com.example.data.model.HotPlatform
 import com.example.data.model.HotSearchItem
 import kotlinx.coroutines.Job
@@ -19,7 +22,11 @@ sealed interface UiState {
     data class Success(
         val items: List<HotSearchItem>,
         val filteredCount: Int,
-        val updateTime: String?
+        val updateTime: String?,
+        val sourceTitle: String,
+        val sourceId: Int?,
+        val dataType: String?,
+        val totalCount: Int?
     ) : UiState
     data class Error(val message: String, val lastSuccessItems: List<HotSearchItem>? = null) : UiState
 }
@@ -35,9 +42,15 @@ class HotSearchViewModel : ViewModel() {
     private val _rawItems = MutableStateFlow<List<HotSearchItem>>(emptyList())
     private val _fetchedTime = MutableStateFlow<String?>(null)
 
+    private var currentSourceTitle: String = ""
+    private var currentSourceId: Int? = null
+    private var currentDataType: String? = null
+    private var currentTotalCount: Int? = null
+
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    private val sourceCache = mutableMapOf<HotPlatform, AllHotSource>()
     private var fetchJob: Job? = null
 
     init {
@@ -59,6 +72,7 @@ class HotSearchViewModel : ViewModel() {
     }
 
     fun refreshActivePlatform() {
+        sourceCache.remove(_activePlatform.value)
         fetchHotSearch(_activePlatform.value)
     }
 
@@ -66,190 +80,222 @@ class HotSearchViewModel : ViewModel() {
         fetchJob?.cancel()
         _uiState.value = UiState.Loading
         _rawItems.value = emptyList()
-
-        val endpoints = getFallbackEndpoints(platform)
+        currentSourceTitle = ""
+        currentSourceId = null
+        currentDataType = null
+        currentTotalCount = null
 
         fetchJob = viewModelScope.launch {
-            var lastErrorMsg = ""
-            var success = false
+            if (BuildConfig.ALLHOT_API_KEY.isBlank()) {
+                _uiState.value = UiState.Error("AllHot API key 未配置。请在本地 .env 或 GitHub Secrets 中设置 ALLHOT_API_KEY。")
+                return@launch
+            }
 
-            for (endpoint in endpoints) {
-                try {
-                    val response = RetrofitClient.apiService.getHotListWithUrl(endpoint)
-                    if (response.isSuccessful && response.body() != null) {
-                        val bodyString = response.body()!!.string()
-                        val items = extractListFromJson(bodyString)
-                        if (items.isNotEmpty()) {
-                            _rawItems.value = items
+            try {
+                val source = resolveAllHotSource(platform)
+                val sourceId = source?.id
+                if (sourceId == null) {
+                    _uiState.value = UiState.Error("AllHot 没有匹配到「${platform.displayName}」数据源，请换一个平台或刷新后重试。")
+                    return@launch
+                }
 
-                            val formattedTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                val response = RetrofitClient.allHotApi.getSourceData(id = sourceId)
+                if (!response.isSuccessful) {
+                    _uiState.value = UiState.Error(formatHttpError("AllHot 榜单数据请求失败", response.code()))
+                    return@launch
+                }
 
-                            _fetchedTime.value = "$formattedTime | \u6E90: ${getHostName(endpoint)}"
-                            applyFilter()
-                            success = true
-                            break
-                        } else {
-                            lastErrorMsg += "\n\u8282\u70B9(${getHostName(endpoint)})\u89E3\u6790\u7A7A"
-                        }
-                    } else {
-                        lastErrorMsg += "\n\u8282\u70B9(${getHostName(endpoint)})\u9519\u8BEF: ${response.code()}"
+                val body = response.body()
+                if (!isSuccessCode(body?.code)) {
+                    _uiState.value = UiState.Error(body?.message ?: body?.msg ?: "AllHot 榜单数据返回异常。")
+                    return@launch
+                }
+
+                val data = body?.data
+                val items = data?.list.orEmpty().mapNotNull { it.toHotSearchItem() }
+                if (items.isEmpty()) {
+                    _uiState.value = UiState.Error("AllHot 返回了空榜单：${source.displayTitle()}。")
+                    return@launch
+                }
+
+                currentSourceTitle = source.displayTitle()
+                currentSourceId = sourceId
+                currentDataType = data?.dataType
+                currentTotalCount = data?.total
+                _rawItems.value = items
+                _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                applyFilter()
+            } catch (e: Exception) {
+                _uiState.value = UiState.Error("AllHot 接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}")
+            }
+        }
+    }
+
+    private suspend fun resolveAllHotSource(platform: HotPlatform): AllHotSource? {
+        sourceCache[platform]?.let { return it }
+
+        for (keyword in sourceKeywords(platform)) {
+            val response = RetrofitClient.allHotApi.searchSources(keyword)
+            if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
+            val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, keyword)
+            if (source?.id != null) {
+                sourceCache[platform] = source
+                return source
+            }
+        }
+
+        for (page in 1..3) {
+            val response = RetrofitClient.allHotApi.getSources(page = page)
+            if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
+            val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, platform.displayName)
+            if (source?.id != null) {
+                sourceCache[platform] = source
+                return source
+            }
+        }
+
+        return null
+    }
+
+    private fun chooseBestSource(
+        sources: List<AllHotSource>,
+        platform: HotPlatform,
+        keyword: String
+    ): AllHotSource? {
+        val candidates = sourceKeywords(platform) + keyword + platform.key
+        return sources
+            .filter { it.id != null && it.displayTitle().isNotBlank() }
+            .maxByOrNull { source ->
+                val title = source.displayTitle().normalize()
+                candidates.sumOf { candidate ->
+                    val normalized = candidate.normalize()
+                    when {
+                        normalized.isBlank() -> 0
+                        title == normalized -> 40
+                        title.contains(normalized) -> 20
+                        normalized.contains(title) -> 10
+                        else -> 0
                     }
-                } catch (e: Exception) {
-                    lastErrorMsg += "\n\u8282\u70B9(${getHostName(endpoint)})\u5F02\u5E38: ${e.localizedMessage ?: e.message ?: "\u672A\u77E5"}"
                 }
             }
-
-            if (!success) {
-                val finalError = lastErrorMsg.trim().ifBlank { "\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u6240\u6709\u8282\u70B9\u5747\u4E0D\u53EF\u7528\u3002" }
-                _uiState.value = UiState.Error(finalError, lastSuccessItems = null)
+            ?.takeIf { source ->
+                val title = source.displayTitle().normalize()
+                candidates.any { candidate ->
+                    val normalized = candidate.normalize()
+                    normalized.isNotBlank() && (title.contains(normalized) || normalized.contains(title))
+                }
             }
+    }
+
+    private fun sourceKeywords(platform: HotPlatform): List<String> {
+        return when (platform) {
+            HotPlatform.WEIBO -> listOf("微博热搜", "微博")
+            HotPlatform.ZHIHU -> listOf("知乎热榜", "知乎")
+            HotPlatform.BAIDU -> listOf("百度热搜", "百度")
+            HotPlatform.BILIBILI -> listOf("哔哩哔哩", "B站", "bilibili")
+            HotPlatform.TOUTIAO -> listOf("今日头条", "头条")
+            HotPlatform.TIEBA -> listOf("百度贴吧", "贴吧")
+            HotPlatform.SSPAI -> listOf("少数派")
+            HotPlatform.KR36 -> listOf("36氪", "36kr")
+            HotPlatform.CSDN -> listOf("CSDN")
+            HotPlatform.DOUYIN -> listOf("抖音")
+            HotPlatform.DOUBAN_GROUP -> listOf("豆瓣小组", "豆瓣")
+            HotPlatform.DOUBAN_MOVIE -> listOf("豆瓣电影")
+            HotPlatform.HISTORY -> listOf("历史上的今天", "历史今日")
+            HotPlatform.FIFTYONE_CTO -> listOf("51CTO")
+            HotPlatform.ACFUN -> listOf("AcFun", "A站")
+            HotPlatform.COOLAPK -> listOf("酷安")
+            HotPlatform.EARTHQUAKE -> listOf("地震速报", "地震")
+            HotPlatform.GENSHIN -> listOf("原神", "原神Tap")
+            HotPlatform.HELLOGITHUB -> listOf("HelloGitHub", "GitHub")
+            HotPlatform.HONKAI -> listOf("崩坏", "星铁Tap")
+            HotPlatform.HUPU -> listOf("虎扑")
+            HotPlatform.HUXIU -> listOf("虎嗅")
+            HotPlatform.IFANR -> listOf("爱范儿", "ifanr")
+            HotPlatform.ITHOME -> listOf("IT之家")
+            HotPlatform.ITHOME_XIJIAYI -> listOf("IT之家限免", "限免")
+            HotPlatform.JIANSHU -> listOf("简书")
+            HotPlatform.JUEJIN -> listOf("掘金")
+            HotPlatform.LOL -> listOf("英雄联盟", "LOL")
+            HotPlatform.NETEASE_NEWS -> listOf("网易新闻", "网易")
+            HotPlatform.NGABBS -> listOf("NGA")
+            HotPlatform.NODESEEK -> listOf("NodeSeek")
+            HotPlatform.QQ_NEWS -> listOf("腾讯新闻", "腾讯")
+            HotPlatform.SINA_NEWS -> listOf("新浪新闻")
+            HotPlatform.SINA -> listOf("新浪网", "新浪")
+            HotPlatform.STARRAIL_MIYOUSHE -> listOf("星穹铁道", "米游社")
+            HotPlatform.THEPAPER -> listOf("澎湃新闻", "澎湃")
+            HotPlatform.V2EX -> listOf("V2EX")
+            HotPlatform.WEATHERALARM -> listOf("气象预警", "天气预警")
+            HotPlatform.WEREAD -> listOf("微信读书")
+            HotPlatform.ZHIHU_DAILY -> listOf("知乎日报")
         }
     }
 
-    private fun getFallbackEndpoints(platform: HotPlatform): List<String> {
-        val list = mutableListOf<String>()
-        val dailyHotMirrors = listOf(
-            "https://dailyhotapi.3yu3.top",
-            "https://dailyhot.api.lkwplus.com"
+    private fun AllHotNewsItem.toHotSearchItem(): HotSearchItem? {
+        val headline = title?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val descriptionText = firstNonBlank(desc, description, summary)
+        val link = firstNonBlank(jumpUrl, url, mobileUrl)
+        val image = firstNonBlank(imageUrl, cover, pic)
+        val hotValue = hot ?: hotValue ?: index
+
+        return HotSearchItem(
+            title = headline,
+            desc = descriptionText,
+            cover = image,
+            pic = image,
+            hot = hotValue,
+            url = link,
+            mobileUrl = mobileUrl
         )
-
-        when (platform) {
-            HotPlatform.WEIBO -> {
-                list.add("https://cn.apihz.cn/api/xinwen/weibo.php?id=88888888&key=88888888")
-                list.add("https://www.haotechs.cn/ljh-wx/api/weiboHot")
-                list.add("https://api.xunjinlu.fun/api/rebang/weibo.php")
-            }
-            HotPlatform.ZHIHU -> {
-                list.add("https://v.api.aa1.cn/api/zhihu-news/index.php?aa1=xiarou")
-            }
-            HotPlatform.BAIDU -> {
-                list.add("https://api.xma.run/api/tools/bdhot/?type=game")
-                list.add("https://v.api.aa1.cn/api/sougou-baidu/index.php?aa1=xiarou")
-            }
-            HotPlatform.NGABBS -> {
-                list.add("https://cn.apihz.cn/api/xinwen/nga.php?id=88888888&key=88888888")
-            }
-            else -> {}
-        }
-
-        for (mirror in dailyHotMirrors) {
-            list.add("$mirror/${platform.key}")
-        }
-        return list
-    }
-
-    private fun extractListFromJson(jsonString: String): List<HotSearchItem> {
-        val items = mutableListOf<HotSearchItem>()
-        try {
-            val rootStr = jsonString.trim()
-            if (rootStr.startsWith("[")) {
-                val jsonArray = org.json.JSONArray(rootStr)
-                items.addAll(parseJsonArray(jsonArray))
-            } else if (rootStr.startsWith("{")) {
-                val rootObj = org.json.JSONObject(rootStr)
-                val array = findDeepestArray(rootObj)
-                if (array != null) {
-                    items.addAll(parseJsonArray(array))
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } catch (e: StackOverflowError) {
-            System.err.println("JSON too deeply nested, skipping")
-        }
-        return items
-    }
-
-    private fun findDeepestArray(obj: org.json.JSONObject, depth: Int = 0): org.json.JSONArray? {
-        if (depth > 20) return null
-        val knownKeys = listOf("data", "list", "result", "news", "hotList", "hot", "items", "routes")
-        for (key in knownKeys) {
-            if (obj.has(key)) {
-                val v = obj.get(key)
-                if (v is org.json.JSONArray && v.length() > 0) return v
-            }
-        }
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val v = obj.get(key)
-            if (v is org.json.JSONArray && v.length() > 0) return v
-            if (v is org.json.JSONObject) {
-                val inner = findDeepestArray(v, depth + 1)
-                if (inner != null) return inner
-            }
-        }
-        return null
-    }
-
-    private fun parseJsonArray(array: org.json.JSONArray): List<HotSearchItem> {
-        val list = mutableListOf<HotSearchItem>()
-        for (i in 0 until array.length()) {
-            val element = array.get(i)
-            if (element is org.json.JSONObject) {
-                val title = extractStringExt(element, listOf("title", "name", "keyword", "word", "hotword", "text", "content", "topic_name"))
-                if (title.isNullOrBlank()) continue
-                val url = extractStringExt(element, listOf("url", "link", "mobileUrl", "href", "short_url"))
-                val desc = extractStringExt(element, listOf("desc", "description", "summary", "detail", "note"))
-                val hotStr = extractStringExt(element, listOf("hot", "score", "index", "hotValue", "num", "hot_score", "search_volume"))
-                val hotObj = if (hotStr != null) com.example.data.model.CoercedString(hotStr) else null
-                list.add(HotSearchItem(title = title, url = url, desc = desc, hot = hotObj))
-            } else if (element is String) {
-                list.add(HotSearchItem(title = element, url = null))
-            }
-        }
-        return list
-    }
-
-    private fun extractStringExt(obj: org.json.JSONObject, candidates: List<String>): String? {
-        for (c in candidates) {
-            if (obj.has(c) && !obj.isNull(c)) {
-                return obj.get(c).toString()
-            }
-        }
-        return null
-    }
-
-    private fun getHostName(url: String): String {
-        return try {
-            java.net.URL(url).host
-        } catch (e: Exception) {
-            url
-        }
     }
 
     private fun applyFilter() {
         val query = _searchQuery.value.trim()
         val currentRaw = _rawItems.value
-
-        if (query.isEmpty()) {
-            _uiState.value = UiState.Success(
-                items = currentRaw,
-                filteredCount = currentRaw.size,
-                updateTime = _fetchedTime.value
-            )
+        val filtered = if (query.isEmpty()) {
+            currentRaw
         } else {
-            val filtered = currentRaw.filter { item ->
+            currentRaw.filter { item ->
                 (item.title?.contains(query, ignoreCase = true) ?: false) ||
-                (item.desc?.contains(query, ignoreCase = true) ?: false) ||
-                (item.author?.contains(query, ignoreCase = true) ?: false)
+                    (item.desc?.contains(query, ignoreCase = true) ?: false) ||
+                    (item.author?.contains(query, ignoreCase = true) ?: false)
             }
-            _uiState.value = UiState.Success(
-                items = filtered,
-                filteredCount = filtered.size,
-                updateTime = _fetchedTime.value
-            )
+        }
+
+        _uiState.value = UiState.Success(
+            items = filtered,
+            filteredCount = filtered.size,
+            updateTime = _fetchedTime.value,
+            sourceTitle = currentSourceTitle.ifBlank { _activePlatform.value.displayName },
+            sourceId = currentSourceId,
+            dataType = currentDataType,
+            totalCount = currentTotalCount
+        )
+    }
+
+    private fun isSuccessCode(code: Int?): Boolean = code == null || code == 0 || code == 200
+
+    private fun formatHttpError(prefix: String, code: Int): String {
+        return when (code) {
+            401, 403 -> "$prefix：鉴权失败，请检查 ALLHOT_API_KEY。"
+            else -> "$prefix：HTTP $code。"
         }
     }
 
-    private fun formatIsoTime(isoString: String): String {
-        return try {
-            val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-            val date = parser.parse(isoString) ?: return isoString
-            val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-            formatter.format(date)
-        } catch (e: Exception) {
-            isoString
-        }
+    private fun AllHotSource.displayTitle(): String = firstNonBlank(title, name, type) ?: ""
+
+    private fun firstNonBlank(vararg values: String?): String? {
+        return values.firstOrNull { !it.isNullOrBlank() }?.trim()
+    }
+
+    private fun String.normalize(): String {
+        return lowercase(Locale.ROOT)
+            .replace(" ", "")
+            .replace("-", "")
+            .replace("_", "")
+            .replace("热搜", "")
+            .replace("热榜", "")
+            .replace("榜单", "")
     }
 }

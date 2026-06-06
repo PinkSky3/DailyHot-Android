@@ -64,6 +64,7 @@
 
 ```bash
 AI_API_KEY=sk-xxx
+ALLHOT_API_KEY=your-allhot-api-key
 ```
 
 构建 Debug APK：
@@ -80,15 +81,20 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## GitHub Actions 配置
 
-在仓库 `Settings -> Secrets and variables -> Actions` 中添加：
+API key 不应写入源码。仓库默认 GitHub Actions 会生成不含 API key 的安全 Debug APK，避免上传的构建产物泄露客户端密钥。
+
+如果需要私有构建或本地调试，在仓库 `Settings -> Secrets and variables -> Actions` 或本地 `.env` 中配置：
 
 | Name | Value |
 | --- | --- |
 | `PEAR_AI_API_KEY` | `sk-xxx` |
+| `ALLHOT_API_KEY` | `your-allhot-api-key` |
+
+公开上传的 APK 不会注入上述 Secrets；如需带 key 的可运行版本，请在本地使用 `.env` 构建，或改为后端代理方式保存密钥。
 
 ## 数据来源
 
-- 热搜聚合：`dailyhotapi.3yu3.top`
+- 热搜聚合：`api.allhot.top`
 - 油价 / 60 秒新闻 / AI 问答：`api.pearapi.ai`
 - 金价：`tmini.net`、`api.freejk.com`、`v2.xxapi.cn`
 

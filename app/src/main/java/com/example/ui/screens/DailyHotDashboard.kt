@@ -283,6 +283,10 @@ fun DailyHotDashboard(
                                         platform = activePlatform,
                                         items = state.items,
                                         updateTime = state.updateTime,
+                                        sourceTitle = state.sourceTitle,
+                                        sourceId = state.sourceId,
+                                        dataType = state.dataType,
+                                        totalCount = state.totalCount,
                                         onItemClicked = { item ->
                                             if (item.url != null) {
                                                 previewUrl = item.url
@@ -1527,7 +1531,7 @@ fun LoadingStateView(
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
         Text(
-            text = "\u4ECE dailyhotapi \u8282\u70B9\u62C9\u53D6\u4E2D",
+            text = "\u901A\u8FC7 AllHot Open API \u5339\u914D\u6570\u636E\u6E90",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
@@ -1539,6 +1543,10 @@ fun SuccessStateView(
     platform: HotPlatform,
     items: List<HotSearchItem>,
     updateTime: String?,
+    sourceTitle: String,
+    sourceId: Int?,
+    dataType: String?,
+    totalCount: Int?,
     onItemClicked: (HotSearchItem) -> Unit,
     onCopyItem: (HotSearchItem) -> Unit,
     onShareItem: (HotSearchItem) -> Unit,
@@ -1548,24 +1556,15 @@ fun SuccessStateView(
         EmptyStateView()
     } else {
         Column(modifier = modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "\u5171\u540C\u6355\u6349 ${items.size} \u6761\u70ED\u641C\u52A8\u6001",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-                Text(
-                    text = "\u66F4\u65B0\u65F6\u95F4: ${updateTime ?: "\u521A\u521A"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
+            AllHotSourceSummary(
+                platform = platform,
+                sourceTitle = sourceTitle,
+                sourceId = sourceId,
+                dataType = dataType,
+                totalCount = totalCount,
+                itemCount = items.size,
+                updateTime = updateTime
+            )
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -1585,6 +1584,66 @@ fun SuccessStateView(
                         onShare = { onShareItem(item) }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AllHotSourceSummary(
+    platform: HotPlatform,
+    sourceTitle: String,
+    sourceId: Int?,
+    dataType: String?,
+    totalCount: Int?,
+    itemCount: Int,
+    updateTime: String?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = platform.brandColor.copy(alpha = 0.10f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = sourceTitle,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = buildString {
+                        append("AllHot Open API")
+                        if (sourceId != null) append(" · ID #$sourceId")
+                        if (!dataType.isNullOrBlank()) append(" · $dataType")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "${itemCount}/${totalCount ?: itemCount}",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                    color = platform.brandColor
+                )
+                Text(
+                    text = updateTime ?: "\u521A\u521A",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                )
             }
         }
     }
@@ -1614,17 +1673,17 @@ fun TrendItemCard(
         modifier = modifier
             .fillMaxWidth()
             .animateContentSize()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(14.dp))
             .combinedClickable(
                 onClick = onClicked,
                 onLongClick = { isExpanded = !isExpanded }
             ),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Column(
             modifier = Modifier
                 .background(MaterialTheme.colorScheme.surface)
-                .padding(16.dp)
+                .padding(14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
