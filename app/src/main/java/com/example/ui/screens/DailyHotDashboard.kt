@@ -49,6 +49,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -124,6 +125,8 @@ import com.example.data.model.OilPriceEntry
 import com.example.data.model.PlatformCategory
 import com.example.data.model.PROVINCES
 import com.example.ui.viewmodel.AiChatViewModel
+import com.example.ui.viewmodel.AllHotSearchViewModel
+import com.example.ui.viewmodel.AllHotUiState
 import com.example.ui.viewmodel.GoldPriceUiState
 import com.example.ui.viewmodel.GoldPriceViewModel
 import com.example.ui.viewmodel.HotSearchViewModel
@@ -136,12 +139,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class DashboardMode {
-    NEWS_60S, HOT_SEARCH, OIL_PRICE, GOLD_PRICE
+    NEWS_60S, HOT_SEARCH, ALL_HOT_SEARCH, OIL_PRICE, GOLD_PRICE
 }
 
 @Composable
 fun DailyHotDashboard(
     hotViewModel: HotSearchViewModel,
+    allHotViewModel: AllHotSearchViewModel,
     oilViewModel: OilPriceViewModel,
     goldViewModel: GoldPriceViewModel,
     news60sViewModel: News60sViewModel,
@@ -153,12 +157,16 @@ fun DailyHotDashboard(
     val activePlatform by hotViewModel.activePlatform.collectAsState()
     val searchQuery by hotViewModel.searchQuery.collectAsState()
     val uiState by hotViewModel.uiState.collectAsState()
+    val allHotActivePlatform by allHotViewModel.activePlatform.collectAsState()
+    val allHotSearchQuery by allHotViewModel.searchQuery.collectAsState()
+    val allHotUiState by allHotViewModel.uiState.collectAsState()
     val oilState by oilViewModel.uiState.collectAsState()
     val goldState by goldViewModel.uiState.collectAsState()
     val selectedProvince by oilViewModel.selectedProvince.collectAsState()
     val news60sState by news60sViewModel.uiState.collectAsState()
     var mode by remember { mutableStateOf(DashboardMode.NEWS_60S) }
     var selectedPlatformCategory by remember { mutableStateOf(PlatformCategory.ALL) }
+    val displayPlatform = if (mode == DashboardMode.ALL_HOT_SEARCH) allHotActivePlatform else activePlatform
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -215,7 +223,7 @@ fun DailyHotDashboard(
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                activePlatform.brandColor.copy(alpha = 0.04f),
+                                displayPlatform.brandColor.copy(alpha = 0.04f),
                                 Color.Transparent
                             ),
                             center = Offset(size.width / 2f, 200f),
@@ -230,7 +238,7 @@ fun DailyHotDashboard(
                     .statusBarsPadding()
             ) {
                 HeaderSection(
-                    activePlatform = activePlatform,
+                    activePlatform = displayPlatform,
                     mode = mode,
                     isDarkTheme = isDarkTheme,
                     onToggleTheme = onToggleTheme,
@@ -239,6 +247,7 @@ fun DailyHotDashboard(
                         isRotating = true
                         when (mode) {
                             DashboardMode.HOT_SEARCH -> hotViewModel.refreshActivePlatform()
+                            DashboardMode.ALL_HOT_SEARCH -> allHotViewModel.refreshActivePlatform()
                             DashboardMode.OIL_PRICE -> oilViewModel.refresh()
                             DashboardMode.GOLD_PRICE -> goldViewModel.refresh()
                             DashboardMode.NEWS_60S -> news60sViewModel.refresh()
@@ -283,11 +292,6 @@ fun DailyHotDashboard(
                                         platform = activePlatform,
                                         items = state.items,
                                         updateTime = state.updateTime,
-                                        sourceTitle = state.sourceTitle,
-                                        sourceId = state.sourceId,
-                                        dataType = state.dataType,
-                                        totalCount = state.totalCount,
-                                        apiChannel = state.apiChannel,
                                         onItemClicked = { item ->
                                             if (item.url != null) {
                                                 previewUrl = item.url
@@ -307,6 +311,74 @@ fun DailyHotDashboard(
                                         message = state.message,
                                         onRetry = { hotViewModel.refreshActivePlatform() },
                                         platform = activePlatform
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    DashboardMode.ALL_HOT_SEARCH -> {
+                        LaunchedEffect(mode) {
+                            allHotViewModel.ensureLoaded()
+                        }
+
+                        PlatformCategoryBar(
+                            selectedCategory = selectedPlatformCategory,
+                            onSelected = { selectedPlatformCategory = it }
+                        )
+
+                        PlatformsBar(
+                            activePlatform = allHotActivePlatform,
+                            platforms = HotPlatform.platformsByCategory(selectedPlatformCategory),
+                            onSelected = { allHotViewModel.selectPlatform(it) }
+                        )
+
+                        SearchSection(
+                            query = allHotSearchQuery,
+                            onQueryChanged = { allHotViewModel.updateSearchQuery(it) },
+                            platform = allHotActivePlatform
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            when (val state = allHotUiState) {
+                                is AllHotUiState.Loading -> {
+                                    LoadingStateView(
+                                        platform = allHotActivePlatform,
+                                        subtitle = "通过 AllHot Open API 匹配数据源"
+                                    )
+                                }
+                                is AllHotUiState.Success -> {
+                                    SuccessStateView(
+                                        platform = allHotActivePlatform,
+                                        items = state.items,
+                                        updateTime = state.updateTime,
+                                        sourceTitle = state.sourceTitle,
+                                        sourceId = state.sourceId,
+                                        dataType = state.dataType,
+                                        totalCount = state.totalCount,
+                                        apiChannel = state.apiChannel,
+                                        onItemClicked = { item ->
+                                            if (item.url != null) {
+                                                previewUrl = item.url
+                                                previewTitle = item.title ?: "热搜-全面版详情"
+                                            }
+                                        },
+                                        onCopyItem = { item ->
+                                            copyToClipboard(context, (item.title ?: "暂无标题") + " " + (item.url ?: ""))
+                                        },
+                                        onShareItem = { item ->
+                                            shareText(context, "【热搜-全面版·${allHotActivePlatform.displayName}】${item.title ?: "暂无标题"}：${item.url ?: ""}")
+                                        }
+                                    )
+                                }
+                                is AllHotUiState.Error -> {
+                                    ErrorStateView(
+                                        message = state.message,
+                                        onRetry = { allHotViewModel.refreshActivePlatform() },
+                                        platform = allHotActivePlatform
                                     )
                                 }
                             }
@@ -344,7 +416,7 @@ fun DailyHotDashboard(
                     InAppBrowserPreview(
                         url = previewUrl!!,
                         title = previewTitle ?: "\u70ED\u641C\u8BE6\u60C5",
-                        brandColor = activePlatform.brandColor,
+                        brandColor = displayPlatform.brandColor,
                         onClose = {
                             previewUrl = null
                             previewTitle = null
@@ -401,6 +473,7 @@ fun HeaderSection(
                             when (mode) {
                                 DashboardMode.NEWS_60S -> Color(0xFF2196F3).copy(alpha = 0.15f)
                                 DashboardMode.HOT_SEARCH -> activePlatform.brandColor.copy(alpha = 0.15f)
+                                DashboardMode.ALL_HOT_SEARCH -> activePlatform.brandColor.copy(alpha = 0.18f)
                                 DashboardMode.OIL_PRICE -> Color(0xFFFF6B35).copy(alpha = 0.15f)
                                 DashboardMode.GOLD_PRICE -> Color(0xFFD4A017).copy(alpha = 0.16f)
                             }
@@ -411,6 +484,7 @@ fun HeaderSection(
                         text = when (mode) {
                             DashboardMode.NEWS_60S -> "\uD83D\uDCF0"
                             DashboardMode.HOT_SEARCH -> activePlatform.infoEmoji
+                            DashboardMode.ALL_HOT_SEARCH -> "\uD83D\uDD25"
                             DashboardMode.OIL_PRICE -> "\u26FD"
                             DashboardMode.GOLD_PRICE -> "\uD83E\uDE99"
                         },
@@ -421,6 +495,7 @@ fun HeaderSection(
                     text = when (mode) {
                         DashboardMode.NEWS_60S -> "60\u79D2\u8BFB\u4E16\u754C"
                         DashboardMode.HOT_SEARCH -> "\u591A\u5E73\u53F0\u70ED\u641C"
+                        DashboardMode.ALL_HOT_SEARCH -> "热搜-全面版"
                         DashboardMode.OIL_PRICE -> "\u6CB9\u4EF7\u67E5\u8BE2"
                         DashboardMode.GOLD_PRICE -> "\u91D1\u4EF7\u67E5\u8BE2"
                     },
@@ -461,6 +536,7 @@ fun HeaderSection(
                         tint = when (mode) {
                             DashboardMode.NEWS_60S -> Color(0xFF2196F3)
                             DashboardMode.HOT_SEARCH -> activePlatform.brandColor
+                            DashboardMode.ALL_HOT_SEARCH -> activePlatform.brandColor
                             DashboardMode.OIL_PRICE -> Color(0xFFFF6B35)
                             DashboardMode.GOLD_PRICE -> Color(0xFFD4A017)
                         },
@@ -491,104 +567,76 @@ fun ModeToggle(
     onModeChange: (DashboardMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val news60sBg by animateColorAsState(
-        targetValue = if (mode == DashboardMode.NEWS_60S) Color(0xFF2196F3) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        animationSpec = tween(durationMillis = 200)
-    )
-    val hotBg by animateColorAsState(
-        targetValue = if (mode == DashboardMode.HOT_SEARCH) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        animationSpec = tween(durationMillis = 200)
-    )
-    val oilBg by animateColorAsState(
-        targetValue = if (mode == DashboardMode.OIL_PRICE) Color(0xFFFF6B35) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        animationSpec = tween(durationMillis = 200)
-    )
-    val goldBg by animateColorAsState(
-        targetValue = if (mode == DashboardMode.GOLD_PRICE) Color(0xFFD4A017) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        animationSpec = tween(durationMillis = 200)
-    )
-    val news60sContent by animateColorAsState(
-        targetValue = if (mode == DashboardMode.NEWS_60S) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 200)
-    )
-    val hotContent by animateColorAsState(
-        targetValue = if (mode == DashboardMode.HOT_SEARCH) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 200)
-    )
-    val oilContent by animateColorAsState(
-        targetValue = if (mode == DashboardMode.OIL_PRICE) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 200)
-    )
-    val goldContent by animateColorAsState(
-        targetValue = if (mode == DashboardMode.GOLD_PRICE) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 200)
+    val options = listOf(
+        DashboardModeOption(DashboardMode.NEWS_60S, "60S", Color(0xFF2196F3)),
+        DashboardModeOption(DashboardMode.HOT_SEARCH, "热搜", Color(0xFFFF6B35)),
+        DashboardModeOption(DashboardMode.ALL_HOT_SEARCH, "热搜-全面版", Color(0xFF2F7D6D)),
+        DashboardModeOption(DashboardMode.OIL_PRICE, "油价", Color(0xFFFF6B35)),
+        DashboardModeOption(DashboardMode.GOLD_PRICE, "金价", Color(0xFFD4A017))
     )
 
     Surface(
         modifier = modifier
-            .height(36.dp)
+            .fillMaxWidth()
+            .height(40.dp)
             .clip(RoundedCornerShape(10.dp)),
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     ) {
-        Row {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(news60sBg)
-                    .clickable { onModeChange(DashboardMode.NEWS_60S) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "60S",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = news60sContent
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(hotBg)
-                    .clickable { onModeChange(DashboardMode.HOT_SEARCH) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "\u70ED\u641C",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = hotContent
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(oilBg)
-                    .clickable { onModeChange(DashboardMode.OIL_PRICE) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "\u6CB9\u4EF7",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = oilContent
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(goldBg)
-                    .clickable { onModeChange(DashboardMode.GOLD_PRICE) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "\u91D1\u4EF7",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = goldContent
+        LazyRow(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items(options, key = { it.mode.name }) { option ->
+                ModeToggleItem(
+                    option = option,
+                    selected = mode == option.mode,
+                    onSelected = { onModeChange(option.mode) }
                 )
             }
         }
+    }
+}
+
+private data class DashboardModeOption(
+    val mode: DashboardMode,
+    val label: String,
+    val color: Color
+)
+
+@Composable
+private fun ModeToggleItem(
+    option: DashboardModeOption,
+    selected: Boolean,
+    onSelected: () -> Unit
+) {
+    val bg by animateColorAsState(
+        targetValue = if (selected) option.color else Color.Transparent,
+        animationSpec = tween(durationMillis = 200)
+    )
+    val content by animateColorAsState(
+        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 200)
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .clickable { onSelected() }
+            .padding(horizontal = 11.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = option.label,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1513,6 +1561,7 @@ fun SearchSection(
 @Composable
 fun LoadingStateView(
     platform: HotPlatform,
+    subtitle: String = "从 dailyhotapi 节点拉取中",
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1532,7 +1581,7 @@ fun LoadingStateView(
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
         Text(
-            text = "\u901A\u8FC7 AllHot Open API \u5339\u914D\u6570\u636E\u6E90",
+            text = subtitle,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
@@ -1544,11 +1593,11 @@ fun SuccessStateView(
     platform: HotPlatform,
     items: List<HotSearchItem>,
     updateTime: String?,
-    sourceTitle: String,
-    sourceId: Int?,
-    dataType: String?,
-    totalCount: Int?,
-    apiChannel: String,
+    sourceTitle: String? = null,
+    sourceId: Int? = null,
+    dataType: String? = null,
+    totalCount: Int? = null,
+    apiChannel: String? = null,
     onItemClicked: (HotSearchItem) -> Unit,
     onCopyItem: (HotSearchItem) -> Unit,
     onShareItem: (HotSearchItem) -> Unit,
@@ -1558,16 +1607,37 @@ fun SuccessStateView(
         EmptyStateView()
     } else {
         Column(modifier = modifier.fillMaxSize()) {
-            AllHotSourceSummary(
-                platform = platform,
-                sourceTitle = sourceTitle,
-                sourceId = sourceId,
-                dataType = dataType,
-                totalCount = totalCount,
-                apiChannel = apiChannel,
-                itemCount = items.size,
-                updateTime = updateTime
-            )
+            if (sourceTitle == null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "共同捕捉 ${items.size} 条热搜动态",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = "更新时间: ${updateTime ?: "刚刚"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            } else {
+                AllHotSourceSummary(
+                    platform = platform,
+                    sourceTitle = sourceTitle,
+                    sourceId = sourceId,
+                    dataType = dataType,
+                    totalCount = totalCount,
+                    apiChannel = apiChannel.orEmpty(),
+                    itemCount = items.size,
+                    updateTime = updateTime
+                )
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
