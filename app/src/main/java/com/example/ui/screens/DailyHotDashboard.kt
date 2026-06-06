@@ -351,7 +351,7 @@ fun DailyHotDashboard(
                                     )
                                 }
                                 is AllHotUiState.Success -> {
-                                    SuccessStateView(
+                                    AllHotSuccessStateView(
                                         platform = allHotActivePlatform,
                                         items = state.items,
                                         updateTime = state.updateTime,
@@ -1659,6 +1659,257 @@ fun SuccessStateView(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun AllHotSuccessStateView(
+    platform: HotPlatform,
+    items: List<HotSearchItem>,
+    updateTime: String?,
+    sourceTitle: String,
+    sourceId: Int?,
+    dataType: String?,
+    totalCount: Int?,
+    apiChannel: String,
+    onItemClicked: (HotSearchItem) -> Unit,
+    onCopyItem: (HotSearchItem) -> Unit,
+    onShareItem: (HotSearchItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) {
+        EmptyStateView()
+    } else {
+        Column(modifier = modifier.fillMaxSize()) {
+            AllHotSourceSummary(
+                platform = platform,
+                sourceTitle = sourceTitle,
+                sourceId = sourceId,
+                dataType = dataType,
+                totalCount = totalCount,
+                apiChannel = apiChannel,
+                itemCount = items.size,
+                updateTime = updateTime
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                itemsIndexed(
+                    items = items,
+                    key = { _, item -> "allhot-${item.title.orEmpty()}-${item.url.orEmpty()}" }
+                ) { index, item ->
+                    AllHotTrendCard(
+                        rank = index + 1,
+                        item = item,
+                        platform = platform,
+                        onClicked = { onItemClicked(item) },
+                        onCopy = { onCopyItem(item) },
+                        onShare = { onShareItem(item) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun AllHotTrendCard(
+    rank: Int,
+    item: HotSearchItem,
+    platform: HotPlatform,
+    onClicked: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    val coverMedia = resolveCoverUrl(platform, item.cover ?: item.pic)
+    val hotText = item.hot?.value?.takeIf { it.isNotBlank() }
+    val desc = item.desc?.trim()?.takeIf { it.isNotBlank() && it != "-" }
+    val rankColor = when (rank) {
+        1 -> Color(0xFFE84D4D)
+        2 -> Color(0xFFFF8A3D)
+        3 -> Color(0xFFD4A017)
+        else -> platform.brandColor
+    }
+
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .clip(RoundedCornerShape(14.dp))
+            .combinedClickable(
+                onClick = onClicked,
+                onLongClick = { isExpanded = !isExpanded }
+            ),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(modifier = Modifier.padding(13.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(42.dp)
+                ) {
+                    Text(
+                        text = rank.toString().padStart(2, '0'),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                        color = rankColor
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(24.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(rankColor.copy(alpha = 0.45f))
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title ?: "暂无标题",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 22.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = if (isExpanded) 5 else 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (!desc.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                            maxLines = if (isExpanded) 6 else 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(9.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (!hotText.isNullOrBlank()) {
+                            AllHotMetricChip(
+                                text = formatHotNumber(hotText),
+                                platform = platform,
+                                icon = "\uD83D\uDD25",
+                                modifier = Modifier.widthIn(max = 112.dp)
+                            )
+                        }
+                        AllHotMetricChip(
+                            text = platform.displayName,
+                            platform = platform,
+                            icon = "源",
+                            modifier = Modifier.widthIn(max = 126.dp)
+                        )
+                    }
+                }
+
+                if (!coverMedia.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(coverMedia)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "AllHot 封面图",
+                        modifier = Modifier
+                            .size(width = 86.dp, height = 76.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop,
+                        error = painterResource(id = android.R.drawable.stat_notify_error),
+                        fallback = painterResource(id = android.R.drawable.stat_notify_error)
+                    )
+                }
+            }
+
+            if (isExpanded || item.url != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "复制",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "分享",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    if (item.url != null) {
+                        IconButton(onClick = onClicked, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Launch,
+                                contentDescription = "打开",
+                                tint = platform.brandColor,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AllHotMetricChip(
+    text: String,
+    platform: HotPlatform,
+    icon: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(platform.brandColor.copy(alpha = 0.10f))
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = icon,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = platform.brandColor,
+            maxLines = 1
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

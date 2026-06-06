@@ -66,6 +66,7 @@
 AI_API_KEY=sk-xxx
 ALLHOT_API_KEY=your-allhot-api-key
 ALLHOT_BACKUP_API_KEY=your-backup-allhot-api-key
+ALLHOT_PROXY_BASE_URL=
 ```
 
 构建 Debug APK：
@@ -82,7 +83,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## GitHub Actions 配置
 
-API key 不应写入源码。仓库默认 GitHub Actions 会生成不含 API key 的安全 Debug APK，避免上传的构建产物泄露客户端密钥。
+API key 不应写入源码。仓库默认 GitHub Actions 会从 GitHub Secrets 注入 AllHot 主/备用 key，生成安装后可直接使用 `热搜-全面版` 的 Debug APK；workflow 和仓库文件中不会出现 key 明文。
 
 如果需要私有构建或本地调试，在仓库 `Settings -> Secrets and variables -> Actions` 或本地 `.env` 中配置：
 
@@ -91,8 +92,11 @@ API key 不应写入源码。仓库默认 GitHub Actions 会生成不含 API key
 | `PEAR_AI_API_KEY` | `sk-xxx` |
 | `ALLHOT_API_KEY` | `your-allhot-api-key` |
 | `ALLHOT_BACKUP_API_KEY` | `your-backup-allhot-api-key` |
+| `ALLHOT_PROXY_BASE_URL` | 可选，服务端 AllHot 代理地址 |
 
-热搜请求会优先使用 `ALLHOT_API_KEY`，主 key 不可用时自动切换到 `ALLHOT_BACKUP_API_KEY`。公开上传的 APK 不会注入上述 Secrets；如需带 key 的可运行版本，请在本地使用 `.env` 构建，或改为后端代理方式保存密钥。
+热搜请求会优先尝试 `ALLHOT_PROXY_BASE_URL` 代理；未配置代理时使用 `ALLHOT_API_KEY`，主 key 不可用时自动切换到 `ALLHOT_BACKUP_API_KEY`。
+
+注意：GitHub Secrets 可以保证仓库不出现明文 key，但如果把 key 注入 APK，逆向 APK 仍有提取风险。若需要同时保护 APK 内部密钥，请部署服务端代理，把真实 AllHot key 放在代理服务环境变量中，APK 只配置 `ALLHOT_PROXY_BASE_URL`。
 
 ## 数据来源
 

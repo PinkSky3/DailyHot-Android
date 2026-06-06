@@ -93,38 +93,38 @@ class AllHotSearchViewModel : ViewModel() {
         currentApiChannel = ""
 
         fetchJob = viewModelScope.launch {
-            val credentials = allHotCredentials()
-            if (credentials.isEmpty()) {
-                _uiState.value = AllHotUiState.Error("AllHot API key 未配置。请在本地 .env 或 GitHub Secrets 中设置 ALLHOT_API_KEY，备用可设置 ALLHOT_BACKUP_API_KEY。")
+            val channels = allHotChannels()
+            if (channels.isEmpty()) {
+                _uiState.value = AllHotUiState.Error("AllHot 公开代理未配置。公开安装版请设置 ALLHOT_PROXY_BASE_URL；本地私有构建可设置 ALLHOT_API_KEY，备用可设置 ALLHOT_BACKUP_API_KEY。")
                 return@launch
             }
 
             var lastError = ""
-            for (credential in credentials) {
+            for (channel in channels) {
                 try {
-                    val source = resolveAllHotSource(platform, credential.apiKey)
+                    val source = resolveAllHotSource(platform, channel)
                     val sourceId = source?.id
                     if (sourceId == null) {
-                        lastError = "AllHot ${credential.label}没有匹配到「${platform.displayName}」数据源。"
+                        lastError = "AllHot ${channel.label}没有匹配到「${platform.displayName}」数据源。"
                         continue
                     }
 
-                    val response = RetrofitClient.allHotApi.getSourceData(apiKey = credential.apiKey, id = sourceId)
+                    val response = getSourceData(channel, sourceId)
                     if (!response.isSuccessful) {
-                        lastError = formatHttpError("AllHot ${credential.label}榜单数据请求失败", response.code())
+                        lastError = formatHttpError("AllHot ${channel.label}榜单数据请求失败", response.code(), channel)
                         continue
                     }
 
                     val body = response.body()
                     if (!isSuccessCode(body?.code)) {
-                        lastError = body?.message ?: body?.msg ?: "AllHot ${credential.label}榜单数据返回异常。"
+                        lastError = body?.message ?: body?.msg ?: "AllHot ${channel.label}榜单数据返回异常。"
                         continue
                     }
 
                     val data = body?.data
                     val items = data?.list.orEmpty().mapNotNull { it.toHotSearchItem() }
                     if (items.isEmpty()) {
-                        lastError = "AllHot ${credential.label}返回了空榜单：${source.displayTitle()}。"
+                        lastError = "AllHot ${channel.label}返回了空榜单：${source.displayTitle()}。"
                         continue
                     }
 
@@ -132,32 +132,46 @@ class AllHotSearchViewModel : ViewModel() {
                     currentSourceId = sourceId
                     currentDataType = data?.dataType
                     currentTotalCount = data?.total
-                    currentApiChannel = credential.label
+                    currentApiChannel = channel.label
                     _rawItems.value = items
                     _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                     applyFilter()
                     return@launch
                 } catch (e: Exception) {
-                    lastError = "AllHot ${credential.label}接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}"
+                    lastError = "AllHot ${channel.label}接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}"
                 }
             }
 
-            _uiState.value = AllHotUiState.Error(lastError.ifBlank { "AllHot 主备 key 均不可用，请检查 ALLHOT_API_KEY 和 ALLHOT_BACKUP_API_KEY。" })
+            _uiState.value = AllHotUiState.Error(lastError.ifBlank { "AllHot 公开代理和本地主备 key 均不可用，请检查代理服务或本地构建配置。" })
         }
     }
 
-    private fun allHotCredentials(): List<AllHotCredential> {
-        return listOf(
-            AllHotCredential("主通道", BuildConfig.ALLHOT_OPEN_API_KEY),
-            AllHotCredential("备用通道", BuildConfig.ALLHOT_BACKUP_OPEN_API_KEY)
-        ).filter { it.apiKey.isNotBlank() }.distinctBy { it.apiKey }
+    private fun allHotChannels(): List<AllHotChannel> {
+        val channels = mutableListOf<AllHotChannel>()
+        normalizedProxyBaseUrl()?.let { channels += AllHotChannel.Proxy("公开代理", it) }
+
+        listOf(
+            AllHotChannel.Direct("主通道", BuildConfig.ALLHOT_OPEN_API_KEY),
+            AllHotChannel.Direct("备用通道", BuildConfig.ALLHOT_BACKUP_OPEN_API_KEY)
+        )
+            .filter { it.apiKey.isNotBlank() }
+            .distinctBy { it.apiKey }
+            .forEach { channels += it }
+
+        return channels
     }
 
-    private suspend fun resolveAllHotSource(platform: HotPlatform, apiKey: String): AllHotSource? {
+    private fun normalizedProxyBaseUrl(): String? {
+        val raw = BuildConfig.ALLHOT_PROXY_BASE_URL.trim()
+        if (raw.isBlank()) return null
+        return raw.trimEnd('/') + "/"
+    }
+
+    private suspend fun resolveAllHotSource(platform: HotPlatform, channel: AllHotChannel): AllHotSource? {
         sourceCache[platform]?.let { return it }
 
         for (keyword in sourceKeywords(platform)) {
-            val response = RetrofitClient.allHotApi.searchSources(apiKey = apiKey, keyword = keyword)
+            val response = searchSources(channel, keyword)
             if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
             val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, keyword)
             if (source?.id != null) {
@@ -167,7 +181,7 @@ class AllHotSearchViewModel : ViewModel() {
         }
 
         for (page in 1..3) {
-            val response = RetrofitClient.allHotApi.getSources(apiKey = apiKey, page = page)
+            val response = getSources(channel, page)
             if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
             val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, platform.displayName)
             if (source?.id != null) {
@@ -177,6 +191,39 @@ class AllHotSearchViewModel : ViewModel() {
         }
 
         return null
+    }
+
+    private suspend fun searchSources(channel: AllHotChannel, keyword: String) = when (channel) {
+        is AllHotChannel.Proxy -> RetrofitClient.allHotApi.searchSourcesViaProxy(
+            url = channel.url("sources/search"),
+            keyword = keyword
+        )
+        is AllHotChannel.Direct -> RetrofitClient.allHotApi.searchSources(
+            apiKey = channel.apiKey,
+            keyword = keyword
+        )
+    }
+
+    private suspend fun getSources(channel: AllHotChannel, page: Int) = when (channel) {
+        is AllHotChannel.Proxy -> RetrofitClient.allHotApi.getSourcesViaProxy(
+            url = channel.url("sources"),
+            page = page
+        )
+        is AllHotChannel.Direct -> RetrofitClient.allHotApi.getSources(
+            apiKey = channel.apiKey,
+            page = page
+        )
+    }
+
+    private suspend fun getSourceData(channel: AllHotChannel, sourceId: Int) = when (channel) {
+        is AllHotChannel.Proxy -> RetrofitClient.allHotApi.getSourceDataViaProxy(
+            url = channel.url("sources/data"),
+            id = sourceId
+        )
+        is AllHotChannel.Direct -> RetrofitClient.allHotApi.getSourceData(
+            apiKey = channel.apiKey,
+            id = sourceId
+        )
     }
 
     private fun chooseBestSource(
@@ -299,9 +346,15 @@ class AllHotSearchViewModel : ViewModel() {
 
     private fun isSuccessCode(code: Int?): Boolean = code == null || code == 0 || code == 200
 
-    private fun formatHttpError(prefix: String, code: Int): String {
+    private fun formatHttpError(prefix: String, code: Int, channel: AllHotChannel): String {
         return when (code) {
-            401, 403 -> "$prefix：鉴权失败，请检查 ALLHOT_API_KEY / ALLHOT_BACKUP_API_KEY。"
+            401, 403 -> {
+                val hint = when (channel) {
+                    is AllHotChannel.Proxy -> "请检查 AllHot 代理服务的环境变量。"
+                    is AllHotChannel.Direct -> "请检查 ALLHOT_API_KEY / ALLHOT_BACKUP_API_KEY。"
+                }
+                "$prefix：鉴权失败，$hint"
+            }
             else -> "$prefix：HTTP $code。"
         }
     }
@@ -322,8 +375,17 @@ class AllHotSearchViewModel : ViewModel() {
             .replace("榜单", "")
     }
 
-    private data class AllHotCredential(
-        val label: String,
-        val apiKey: String
-    )
+    private sealed class AllHotChannel(open val label: String) {
+        data class Proxy(
+            override val label: String,
+            val baseUrl: String
+        ) : AllHotChannel(label) {
+            fun url(path: String): String = baseUrl + path
+        }
+
+        data class Direct(
+            override val label: String,
+            val apiKey: String
+        ) : AllHotChannel(label)
+    }
 }

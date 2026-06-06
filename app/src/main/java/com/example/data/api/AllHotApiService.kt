@@ -6,6 +6,7 @@ import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Query
+import retrofit2.http.Url
 
 interface AllHotApiService {
     @GET("sources")
@@ -23,6 +24,25 @@ interface AllHotApiService {
     @GET("sources/data")
     suspend fun getSourceData(
         @Header("X-API-Key") apiKey: String,
+        @Query("id") id: Int,
+        @Query("page") page: Int = 1
+    ): Response<AllHotSourceDataResponse>
+
+    @GET
+    suspend fun getSourcesViaProxy(
+        @Url url: String,
+        @Query("page") page: Int = 1
+    ): Response<AllHotSourcesResponse>
+
+    @GET
+    suspend fun searchSourcesViaProxy(
+        @Url url: String,
+        @Query("keyword") keyword: String
+    ): Response<AllHotSourcesResponse>
+
+    @GET
+    suspend fun getSourceDataViaProxy(
+        @Url url: String,
         @Query("id") id: Int,
         @Query("page") page: Int = 1
     ): Response<AllHotSourceDataResponse>

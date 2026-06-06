@@ -47,12 +47,17 @@ jobs:
       run: |
         keytool -genkey -v -keystore ./debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-    - name: Create CI env without embedding secrets
+    - name: Create CI env from GitHub Secrets
+      env:
+        ALLHOT_API_KEY: ${{ secrets.ALLHOT_API_KEY }}
+        ALLHOT_BACKUP_API_KEY: ${{ secrets.ALLHOT_BACKUP_API_KEY }}
+        ALLHOT_PROXY_BASE_URL: ${{ vars.ALLHOT_PROXY_BASE_URL }}
       run: |
         {
           echo "AI_API_KEY=CI_PLACEHOLDER"
-          echo "ALLHOT_API_KEY=CI_PLACEHOLDER"
-          echo "ALLHOT_BACKUP_API_KEY=CI_PLACEHOLDER"
+          echo "ALLHOT_API_KEY=${ALLHOT_API_KEY:-CI_PLACEHOLDER}"
+          echo "ALLHOT_BACKUP_API_KEY=${ALLHOT_BACKUP_API_KEY:-CI_PLACEHOLDER}"
+          echo "ALLHOT_PROXY_BASE_URL=${ALLHOT_PROXY_BASE_URL:-CI_PLACEHOLDER}"
         } > .env
 
     - name: Build Debug APK
