@@ -42,8 +42,8 @@ object RetrofitClient {
 
     private val allHotAuthInterceptor = Interceptor { chain ->
         val builder = chain.request().newBuilder()
-        if (BuildConfig.ALLHOT_API_KEY.isNotBlank()) {
-            builder.addHeader("X-API-Key", BuildConfig.ALLHOT_API_KEY)
+        if (BuildConfig.ALLHOT_OPEN_API_KEY.isNotBlank()) {
+            builder.addHeader("X-API-Key", BuildConfig.ALLHOT_OPEN_API_KEY)
         }
         chain.proceed(builder.build())
     }

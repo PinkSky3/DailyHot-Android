@@ -50,8 +50,8 @@ jobs:
     - name: Create CI env without embedding secrets
       run: |
         {
-          echo "AI_API_KEY="
-          echo "ALLHOT_API_KEY="
+          echo "AI_API_KEY=CI_PLACEHOLDER"
+          echo "ALLHOT_API_KEY=CI_PLACEHOLDER"
         } > .env
 
     - name: Build Debug APK

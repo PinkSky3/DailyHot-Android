@@ -86,7 +86,7 @@ class HotSearchViewModel : ViewModel() {
         currentTotalCount = null
 
         fetchJob = viewModelScope.launch {
-            if (BuildConfig.ALLHOT_API_KEY.isBlank()) {
+            if (BuildConfig.ALLHOT_OPEN_API_KEY.isBlank()) {
                 _uiState.value = UiState.Error("AllHot API key 未配置。请在本地 .env 或 GitHub Secrets 中设置 ALLHOT_API_KEY。")
                 return@launch
             }

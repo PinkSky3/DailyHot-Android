@@ -21,21 +21,21 @@ android {
 
     fun readSecret(envName: String, dotEnvName: String): String {
       val envValue = System.getenv(envName)
-      if (!envValue.isNullOrBlank()) return envValue
-      return try {
+      val value = if (!envValue.isNullOrBlank()) envValue else try {
         rootProject.file(".env").readLines()
           .firstOrNull { it.startsWith("$dotEnvName=") }
           ?.substringAfter("=")
           ?.trim()
           ?: ""
       } catch (_: Exception) { "" }
+      return if (value.equals("CI_PLACEHOLDER", ignoreCase = true)) "" else value
     }
 
     fun String.asBuildConfigString(): String =
       "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
     buildConfigField("String", "PEAR_AI_API_KEY", readSecret("PEAR_AI_API_KEY", "AI_API_KEY").asBuildConfigString())
-    buildConfigField("String", "ALLHOT_API_KEY", readSecret("ALLHOT_API_KEY", "ALLHOT_API_KEY").asBuildConfigString())
+    buildConfigField("String", "ALLHOT_OPEN_API_KEY", readSecret("ALLHOT_API_KEY", "ALLHOT_API_KEY").asBuildConfigString())
   }
 
   signingConfigs {
