@@ -17,6 +17,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private const val ALL_HOT_ALL_CATEGORY_KEY = "all"
+
 sealed interface AllHotUiState {
     object Loading : AllHotUiState
     data class Success(
@@ -32,10 +34,36 @@ sealed interface AllHotUiState {
     data class Error(val message: String, val lastSuccessItems: List<HotSearchItem>? = null) : AllHotUiState
 }
 
+data class AllHotSourceCategory(
+    val key: String,
+    val name: String,
+    val count: Int
+)
+
+data class AllHotSourceOption(
+    val id: Int,
+    val title: String,
+    val categoryKey: String,
+    val categoryName: String,
+    val rawType: String?
+)
+
 class AllHotSearchViewModel : ViewModel() {
 
     private val _activePlatform = MutableStateFlow(HotPlatform.WEIBO)
     val activePlatform: StateFlow<HotPlatform> = _activePlatform.asStateFlow()
+
+    private val _sourceCategories = MutableStateFlow<List<AllHotSourceCategory>>(emptyList())
+    val sourceCategories: StateFlow<List<AllHotSourceCategory>> = _sourceCategories.asStateFlow()
+
+    private val _activeCategoryKey = MutableStateFlow(ALL_HOT_ALL_CATEGORY_KEY)
+    val activeCategoryKey: StateFlow<String> = _activeCategoryKey.asStateFlow()
+
+    private val _sourceOptions = MutableStateFlow<List<AllHotSourceOption>>(emptyList())
+    val sourceOptions: StateFlow<List<AllHotSourceOption>> = _sourceOptions.asStateFlow()
+
+    private val _activeSource = MutableStateFlow<AllHotSourceOption?>(null)
+    val activeSource: StateFlow<AllHotSourceOption?> = _activeSource.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -52,23 +80,32 @@ class AllHotSearchViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<AllHotUiState>(AllHotUiState.Loading)
     val uiState: StateFlow<AllHotUiState> = _uiState.asStateFlow()
 
-    private val sourceCache = mutableMapOf<HotPlatform, AllHotSource>()
     private var fetchJob: Job? = null
     private var hasLoadedOnce = false
 
     fun ensureLoaded() {
         if (!hasLoadedOnce) {
-            fetchHotSearch(_activePlatform.value)
+            loadSourcesAndSelectInitial()
         }
     }
 
-    fun selectPlatform(platform: HotPlatform) {
-        if (_activePlatform.value == platform && _uiState.value !is AllHotUiState.Error && _rawItems.value.isNotEmpty()) {
+    fun selectCategory(categoryKey: String) {
+        if (_activeCategoryKey.value == categoryKey) return
+        _activeCategoryKey.value = categoryKey
+
+        val active = _activeSource.value
+        if (active == null || !sourceMatchesCategory(active, categoryKey)) {
+            sourcesForCategory(categoryKey).firstOrNull()?.let { selectSource(it) }
+        }
+    }
+
+    fun selectSource(source: AllHotSourceOption) {
+        if (_activeSource.value?.id == source.id && _uiState.value !is AllHotUiState.Error && _rawItems.value.isNotEmpty()) {
             return
         }
-        _activePlatform.value = platform
+        setActiveSource(source)
         _searchQuery.value = ""
-        fetchHotSearch(platform)
+        fetchSourceData(source)
     }
 
     fun updateSearchQuery(query: String) {
@@ -77,11 +114,27 @@ class AllHotSearchViewModel : ViewModel() {
     }
 
     fun refreshActivePlatform() {
-        sourceCache.remove(_activePlatform.value)
-        fetchHotSearch(_activePlatform.value)
+        refreshActiveSource()
     }
 
-    private fun fetchHotSearch(platform: HotPlatform) {
+    fun refreshActiveSource() {
+        val source = _activeSource.value
+        if (source == null) {
+            loadSourcesAndSelectInitial(forceReload = true)
+        } else {
+            fetchSourceData(source)
+        }
+    }
+
+    private fun loadSourcesAndSelectInitial(forceReload: Boolean = false) {
+        if (!forceReload && _sourceOptions.value.isNotEmpty()) {
+            (_activeSource.value ?: _sourceOptions.value.firstOrNull())?.let { source ->
+                setActiveSource(source)
+                fetchSourceData(source)
+            }
+            return
+        }
+
         hasLoadedOnce = true
         fetchJob?.cancel()
         _uiState.value = AllHotUiState.Loading
@@ -102,41 +155,19 @@ class AllHotSearchViewModel : ViewModel() {
             var lastError = ""
             for (channel in channels) {
                 try {
-                    val source = resolveAllHotSource(platform, channel)
-                    val sourceId = source?.id
-                    if (sourceId == null) {
-                        lastError = "AllHot ${channel.label}没有匹配到「${platform.displayName}」数据源。"
+                    val sources = loadAllSources(channel)
+                    val options = sources.mapNotNull { it.toSourceOption() }
+                    if (options.isEmpty()) {
+                        lastError = "AllHot ${channel.label}没有返回可用数据源。"
                         continue
                     }
 
-                    val response = getSourceData(channel, sourceId)
-                    if (!response.isSuccessful) {
-                        lastError = formatHttpError("AllHot ${channel.label}榜单数据请求失败", response.code(), channel)
-                        continue
-                    }
-
-                    val body = response.body()
-                    if (!isSuccessCode(body?.code)) {
-                        lastError = body?.message ?: body?.msg ?: "AllHot ${channel.label}榜单数据返回异常。"
-                        continue
-                    }
-
-                    val data = body?.data
-                    val items = data?.list.orEmpty().mapNotNull { it.toHotSearchItem() }
-                    if (items.isEmpty()) {
-                        lastError = "AllHot ${channel.label}返回了空榜单：${source.displayTitle()}。"
-                        continue
-                    }
-
-                    currentSourceTitle = source.displayTitle()
-                    currentSourceId = sourceId
-                    currentDataType = data?.dataType
-                    currentTotalCount = data?.total
-                    currentApiChannel = channel.label
-                    _rawItems.value = items
-                    _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    applyFilter()
-                    return@launch
+                    updateSourceCollections(options)
+                    val selected = chooseInitialSource(options)
+                    setActiveSource(selected)
+                    val success = fetchSourceDataWithFallback(selected, preferredChannel = channel)
+                    if (success) return@launch
+                    lastError = "AllHot ${channel.label}无法加载「${selected.title}」榜单。"
                 } catch (e: Exception) {
                     lastError = "AllHot ${channel.label}接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}"
                 }
@@ -167,30 +198,24 @@ class AllHotSearchViewModel : ViewModel() {
         return raw.trimEnd('/') + "/"
     }
 
-    private suspend fun resolveAllHotSource(platform: HotPlatform, channel: AllHotChannel): AllHotSource? {
-        sourceCache[platform]?.let { return it }
+    private suspend fun loadAllSources(channel: AllHotChannel): List<AllHotSource> {
+        val sources = mutableListOf<AllHotSource>()
+        var expectedTotal: Int? = null
 
-        for (keyword in sourceKeywords(platform)) {
-            val response = searchSources(channel, keyword)
-            if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
-            val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, keyword)
-            if (source?.id != null) {
-                sourceCache[platform] = source
-                return source
-            }
-        }
-
-        for (page in 1..3) {
+        for (page in 1..10) {
             val response = getSources(channel, page)
-            if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) continue
-            val source = chooseBestSource(response.body()?.data?.list.orEmpty(), platform, platform.displayName)
-            if (source?.id != null) {
-                sourceCache[platform] = source
-                return source
-            }
+            if (!response.isSuccessful || !isSuccessCode(response.body()?.code)) break
+
+            val data = response.body()?.data ?: break
+            val pageSources = data.list.orEmpty()
+            if (pageSources.isEmpty()) break
+
+            sources += pageSources
+            expectedTotal = data.total ?: expectedTotal
+            if (expectedTotal != null && sources.size >= expectedTotal) break
         }
 
-        return null
+        return sources.distinctBy { it.id }
     }
 
     private suspend fun searchSources(channel: AllHotChannel, keyword: String) = when (channel) {
@@ -226,34 +251,164 @@ class AllHotSearchViewModel : ViewModel() {
         )
     }
 
-    private fun chooseBestSource(
-        sources: List<AllHotSource>,
-        platform: HotPlatform,
-        keyword: String
-    ): AllHotSource? {
-        val candidates = sourceKeywords(platform) + keyword + platform.key
-        return sources
-            .filter { it.id != null && it.displayTitle().isNotBlank() }
-            .maxByOrNull { source ->
-                val title = source.displayTitle().normalize()
-                candidates.sumOf { candidate ->
-                    val normalized = candidate.normalize()
-                    when {
-                        normalized.isBlank() -> 0
-                        title == normalized -> 40
-                        title.contains(normalized) -> 20
-                        normalized.contains(title) -> 10
-                        else -> 0
-                    }
-                }
+    private fun updateSourceCollections(options: List<AllHotSourceOption>) {
+        _sourceOptions.value = options
+        _sourceCategories.value = buildSourceCategories(options)
+        if (_activeCategoryKey.value !in _sourceCategories.value.map { it.key }) {
+            _activeCategoryKey.value = ALL_HOT_ALL_CATEGORY_KEY
+        }
+    }
+
+    private fun buildSourceCategories(options: List<AllHotSourceOption>): List<AllHotSourceCategory> {
+        val grouped = options
+            .groupBy { it.categoryKey to it.categoryName }
+            .map { (category, items) ->
+                AllHotSourceCategory(
+                    key = category.first,
+                    name = category.second,
+                    count = items.size
+                )
             }
-            ?.takeIf { source ->
-                val title = source.displayTitle().normalize()
-                candidates.any { candidate ->
-                    val normalized = candidate.normalize()
-                    normalized.isNotBlank() && (title.contains(normalized) || normalized.contains(title))
-                }
+            .sortedWith(compareByDescending<AllHotSourceCategory> { it.count }.thenBy { it.name })
+
+        return listOf(AllHotSourceCategory(ALL_HOT_ALL_CATEGORY_KEY, "全部", options.size)) + grouped
+    }
+
+    private fun chooseInitialSource(options: List<AllHotSourceOption>): AllHotSourceOption {
+        val current = _activeSource.value
+        if (current != null) {
+            options.firstOrNull { it.id == current.id }?.let { return it }
+        }
+        return options.first()
+    }
+
+    private fun setActiveSource(source: AllHotSourceOption) {
+        _activeSource.value = source
+        _activePlatform.value = inferVisualPlatform(source.title)
+    }
+
+    private fun sourcesForCategory(categoryKey: String): List<AllHotSourceOption> {
+        return _sourceOptions.value.filter { sourceMatchesCategory(it, categoryKey) }
+    }
+
+    private fun sourceMatchesCategory(source: AllHotSourceOption, categoryKey: String): Boolean {
+        return categoryKey == ALL_HOT_ALL_CATEGORY_KEY || source.categoryKey == categoryKey
+    }
+
+    private fun AllHotSource.toSourceOption(): AllHotSourceOption? {
+        val sourceId = id ?: return null
+        val sourceTitle = displayTitle().takeIf { it.isNotBlank() } ?: return null
+        val category = inferCategory(this, sourceTitle)
+        return AllHotSourceOption(
+            id = sourceId,
+            title = sourceTitle,
+            categoryKey = category.key,
+            categoryName = category.name,
+            rawType = type
+        )
+    }
+
+    private fun inferCategory(source: AllHotSource, sourceTitle: String): AllHotSourceCategory {
+        val rawType = source.type?.trim()
+        if (!rawType.isNullOrBlank() && rawType != sourceTitle) {
+            return AllHotSourceCategory(rawType.categoryKey(), rawType, 0)
+        }
+
+        val normalized = sourceTitle.normalize()
+        val categoryName = when {
+            listOf("微博", "知乎", "贴吧", "v2ex", "nodeseek", "豆瓣小组").any { normalized.contains(it.normalize()) } -> "社区"
+            listOf("头条", "新闻", "澎湃", "网易", "腾讯", "新浪", "虎嗅", "爱范儿", "少数派").any { normalized.contains(it.normalize()) } -> "资讯"
+            listOf("b站", "哔哩", "acfun", "抖音", "电影", "虎扑", "lol", "原神", "崩坏", "星穹").any { normalized.contains(it.normalize()) } -> "文娱"
+            listOf("github", "csdn", "掘金", "51cto", "ithome", "it之家").any { normalized.contains(it.normalize()) } -> "科技"
+            listOf("地震", "天气", "气象", "历史").any { normalized.contains(it.normalize()) } -> "生活"
+            else -> "其他"
+        }
+        return AllHotSourceCategory(categoryName.categoryKey(), categoryName, 0)
+    }
+
+    private fun inferVisualPlatform(sourceTitle: String): HotPlatform {
+        val title = sourceTitle.normalize()
+        return HotPlatform.values().firstOrNull { platform ->
+            sourceKeywords(platform).any { keyword ->
+                val normalizedKeyword = keyword.normalize()
+                normalizedKeyword.isNotBlank() && title.contains(normalizedKeyword)
             }
+        } ?: HotPlatform.WEIBO
+    }
+
+    private fun fetchSourceData(source: AllHotSourceOption) {
+        fetchJob?.cancel()
+        _uiState.value = AllHotUiState.Loading
+        _rawItems.value = emptyList()
+
+        fetchJob = viewModelScope.launch {
+            fetchSourceDataWithFallback(source)
+        }
+    }
+
+    private suspend fun fetchSourceDataWithFallback(
+        source: AllHotSourceOption,
+        preferredChannel: AllHotChannel? = null
+    ): Boolean {
+        resetCurrentSourceMetadata()
+        val channels = orderedChannels(preferredChannel)
+        if (channels.isEmpty()) {
+            _uiState.value = AllHotUiState.Error("AllHot 公开代理未配置。公开安装版请设置 ALLHOT_PROXY_BASE_URL；本地私有构建可设置 ALLHOT_API_KEY，备用可设置 ALLHOT_BACKUP_API_KEY。")
+            return false
+        }
+
+        var lastError = ""
+        for (channel in channels) {
+            try {
+                val response = getSourceData(channel, source.id)
+                if (!response.isSuccessful) {
+                    lastError = formatHttpError("AllHot ${channel.label}榜单数据请求失败", response.code(), channel)
+                    continue
+                }
+
+                val body = response.body()
+                if (!isSuccessCode(body?.code)) {
+                    lastError = body?.message ?: body?.msg ?: "AllHot ${channel.label}榜单数据返回异常。"
+                    continue
+                }
+
+                val data = body?.data
+                val items = data?.list.orEmpty().mapNotNull { it.toHotSearchItem() }
+                if (items.isEmpty()) {
+                    lastError = "AllHot ${channel.label}返回了空榜单：${source.title}。"
+                    continue
+                }
+
+                currentSourceTitle = source.title
+                currentSourceId = source.id
+                currentDataType = data?.dataType ?: source.rawType
+                currentTotalCount = data?.total
+                currentApiChannel = channel.label
+                _rawItems.value = items
+                _fetchedTime.value = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                applyFilter()
+                return true
+            } catch (e: Exception) {
+                lastError = "AllHot ${channel.label}接口异常: ${e.localizedMessage ?: e.message ?: "未知错误"}"
+            }
+        }
+
+        _uiState.value = AllHotUiState.Error(lastError.ifBlank { "AllHot 数据源不可用：${source.title}" })
+        return false
+    }
+
+    private fun orderedChannels(preferredChannel: AllHotChannel?): List<AllHotChannel> {
+        val channels = allHotChannels()
+        if (preferredChannel == null) return channels
+        return listOf(preferredChannel) + channels.filterNot { it.channelKey() == preferredChannel.channelKey() }
+    }
+
+    private fun resetCurrentSourceMetadata() {
+        currentSourceTitle = ""
+        currentSourceId = null
+        currentDataType = null
+        currentTotalCount = null
+        currentApiChannel = ""
     }
 
     private fun sourceKeywords(platform: HotPlatform): List<String> {
@@ -373,6 +528,19 @@ class AllHotSearchViewModel : ViewModel() {
             .replace("热搜", "")
             .replace("热榜", "")
             .replace("榜单", "")
+    }
+
+    private fun String.categoryKey(): String {
+        return normalize()
+            .replace(Regex("[^a-z0-9\\u4e00-\\u9fa5]+"), "")
+            .ifBlank { "other" }
+    }
+
+    private fun AllHotChannel.channelKey(): String {
+        return when (this) {
+            is AllHotChannel.Proxy -> "proxy:$baseUrl"
+            is AllHotChannel.Direct -> "direct:$apiKey"
+        }
     }
 
     private sealed class AllHotChannel(open val label: String) {

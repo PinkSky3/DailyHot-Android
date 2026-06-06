@@ -126,6 +126,8 @@ import com.example.data.model.PlatformCategory
 import com.example.data.model.PROVINCES
 import com.example.ui.viewmodel.AiChatViewModel
 import com.example.ui.viewmodel.AllHotSearchViewModel
+import com.example.ui.viewmodel.AllHotSourceCategory
+import com.example.ui.viewmodel.AllHotSourceOption
 import com.example.ui.viewmodel.AllHotUiState
 import com.example.ui.viewmodel.GoldPriceUiState
 import com.example.ui.viewmodel.GoldPriceViewModel
@@ -158,6 +160,10 @@ fun DailyHotDashboard(
     val searchQuery by hotViewModel.searchQuery.collectAsState()
     val uiState by hotViewModel.uiState.collectAsState()
     val allHotActivePlatform by allHotViewModel.activePlatform.collectAsState()
+    val allHotCategories by allHotViewModel.sourceCategories.collectAsState()
+    val allHotActiveCategoryKey by allHotViewModel.activeCategoryKey.collectAsState()
+    val allHotSources by allHotViewModel.sourceOptions.collectAsState()
+    val allHotActiveSource by allHotViewModel.activeSource.collectAsState()
     val allHotSearchQuery by allHotViewModel.searchQuery.collectAsState()
     val allHotUiState by allHotViewModel.uiState.collectAsState()
     val oilState by oilViewModel.uiState.collectAsState()
@@ -321,15 +327,20 @@ fun DailyHotDashboard(
                             allHotViewModel.ensureLoaded()
                         }
 
-                        PlatformCategoryBar(
-                            selectedCategory = selectedPlatformCategory,
-                            onSelected = { selectedPlatformCategory = it }
+                        AllHotCategoryBar(
+                            categories = allHotCategories,
+                            selectedCategoryKey = allHotActiveCategoryKey,
+                            accentColor = allHotActivePlatform.brandColor,
+                            onSelected = { allHotViewModel.selectCategory(it.key) }
                         )
 
-                        PlatformsBar(
-                            activePlatform = allHotActivePlatform,
-                            platforms = HotPlatform.platformsByCategory(selectedPlatformCategory),
-                            onSelected = { allHotViewModel.selectPlatform(it) }
+                        AllHotSourcesBar(
+                            sources = allHotSources.filter { source ->
+                                allHotActiveCategoryKey == "all" || source.categoryKey == allHotActiveCategoryKey
+                            },
+                            activeSource = allHotActiveSource,
+                            accentColor = allHotActivePlatform.brandColor,
+                            onSelected = { allHotViewModel.selectSource(it) }
                         )
 
                         SearchSection(
@@ -1394,6 +1405,125 @@ fun OilPriceCard(
                     color = accentColor
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun AllHotCategoryBar(
+    categories: List<AllHotSourceCategory>,
+    selectedCategoryKey: String,
+    accentColor: Color,
+    onSelected: (AllHotSourceCategory) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (categories.isEmpty()) {
+            item {
+                AllHotInfoChip(
+                    text = "加载来源",
+                    selected = true,
+                    accentColor = accentColor,
+                    onClick = {}
+                )
+            }
+        } else {
+            items(categories, key = { it.key }) { category ->
+                AllHotInfoChip(
+                    text = "${category.name} (${category.count})",
+                    selected = selectedCategoryKey == category.key,
+                    accentColor = accentColor,
+                    onClick = { onSelected(category) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AllHotSourcesBar(
+    sources: List<AllHotSourceOption>,
+    activeSource: AllHotSourceOption?,
+    accentColor: Color,
+    onSelected: (AllHotSourceOption) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (sources.isEmpty()) {
+            item {
+                AllHotInfoChip(
+                    text = "暂无来源",
+                    selected = false,
+                    accentColor = accentColor,
+                    onClick = {}
+                )
+            }
+        } else {
+            items(sources, key = { it.id }) { source ->
+                AllHotInfoChip(
+                    text = source.title,
+                    selected = activeSource?.id == source.id,
+                    accentColor = accentColor,
+                    onClick = { onSelected(source) },
+                    maxWidth = 168.dp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AllHotInfoChip(
+    text: String,
+    selected: Boolean,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    maxWidth: androidx.compose.ui.unit.Dp = 140.dp
+) {
+    val chipBg by animateColorAsState(
+        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        animationSpec = tween(durationMillis = 200)
+    )
+    val chipContentColor by animateColorAsState(
+        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 200)
+    )
+
+    Surface(
+        modifier = modifier
+            .height(36.dp)
+            .widthIn(max = maxWidth)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { onClick() },
+        color = chipBg,
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                ),
+                color = chipContentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
