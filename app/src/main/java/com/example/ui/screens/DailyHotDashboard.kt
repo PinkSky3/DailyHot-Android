@@ -747,10 +747,26 @@ fun OilPriceContent(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "${selectedProvince}\u7701\u5B9E\u65F6\u6CB9\u4EF7",
+                                    text = "${state.province}\u5B9E\u65F6\u6CB9\u4EF7",
                                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
+                                if (!state.updateTime.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "\u66F4\u65B0: ${state.updateTime}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                                    )
+                                }
+                                if (!state.nextUpdateTime.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = state.nextUpdateTime,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = oilColor.copy(alpha = 0.85f)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1431,7 +1447,7 @@ fun OilPriceCard(
             }
             SelectionContainer {
                 Text(
-                    text = "\uFFE5${entry.price} /L",
+                    text = entry.price,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
                     color = accentColor
                 )

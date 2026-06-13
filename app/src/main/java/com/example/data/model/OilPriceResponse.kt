@@ -2,14 +2,36 @@ package com.example.data.model
 
 data class OilPriceRootResponse(
     val code: Int? = null,
+    val message: String? = null,
     val msg: String? = null,
     val data: OilPriceDataResponse? = null
 )
 
 data class OilPriceDataResponse(
+    val region: String? = null,
+    val trend: OilPriceTrend? = null,
+    val items: List<OilPriceItem>? = null,
+    val updated: String? = null,
     val time: String? = null,
     val next_update_time: String? = null,
     val province: OilPriceProvince? = null
+)
+
+data class OilPriceTrend(
+    val next_adjustment_date: String? = null,
+    val direction: String? = null,
+    val change_ton: Double? = null,
+    val change_ton_desc: String? = null,
+    val change_liter_min: Double? = null,
+    val change_liter_max: Double? = null,
+    val change_liter_desc: String? = null,
+    val description: String? = null
+)
+
+data class OilPriceItem(
+    val name: String? = null,
+    val price: Double? = null,
+    val price_desc: String? = null
 )
 
 data class OilPriceProvince(

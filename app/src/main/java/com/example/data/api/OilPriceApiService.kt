@@ -1,12 +1,9 @@
 package com.example.data.api
 
 import retrofit2.http.GET
-import retrofit2.http.Query
+import retrofit2.http.Url
 
 interface OilPriceApiService {
-    @GET("api/oilprice")
-    suspend fun getOilPrice(
-        @Query("type") type: String,
-        @Query("province") province: String
-    ): retrofit2.Response<okhttp3.ResponseBody>
+    @GET
+    suspend fun fetch(@Url url: String): retrofit2.Response<okhttp3.ResponseBody>
 }
