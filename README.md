@@ -48,7 +48,7 @@
 
 ## 版本
 
-当前版本：`1.3.2`
+当前版本：`1.3.3`
 
 具体变化见 [更新日志](CHANGELOG.md)。
 
@@ -72,6 +72,7 @@ app/build/outputs/apk/debug/app-debug.apk
 - 60 秒新闻：`60s.viki.moe` 及公开备用实例
 - 油价：`60s.viki.moe`、`api.nxvav.cn`、`60s.crystelf.top`、`api.qqsuu.cn`、`v2.xxapi.cn`（按顺序兜底）
 - 金价：`60s.viki.moe`（主）、`push2.eastmoney.com`（兜底）、`v2.xxapi.cn`（品牌金店/银行金条/回收价）
+- 应用更新：清单和安装包均来自 GitHub（`release-channel` 分支与 Release），国内通过 `gh-proxy.org` 等加速节点直连下载，也可选择 GitHub 原站
 
 ---
 

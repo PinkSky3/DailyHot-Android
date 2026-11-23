@@ -166,7 +166,7 @@ private fun WeatherAlertSuccessContent(
             .fillMaxSize()
             .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 88.dp)
+        contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item {
             WeatherSummaryCard(

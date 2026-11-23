@@ -312,7 +312,10 @@ fun SuccessStateView(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * 热搜条目：点击打开预览；复制、分享按钮直接显示，不再依赖长按展开这种不易发现的手势。
+ * 前三名用平台色标出排名，其余排名使用中性色。
+ */
 @Composable
 private fun TrendItemCard(
     rank: Int,
@@ -323,156 +326,100 @@ private fun TrendItemCard(
     onShare: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val rankColor = when (rank) {
-        1 -> Color(0xFFFFD700)
-        2 -> Color(0xFFC0C0C0)
-        3 -> Color(0xFFCD7F32)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-    }
-
-    var isExpanded by remember { mutableStateOf(false) }
+    val isTopThree = rank <= 3
 
     ElevatedCard(
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize()
             .clip(RoundedCornerShape(14.dp))
-            .combinedClickable(
-                onClick = onClicked,
-                onLongClick = { isExpanded = !isExpanded }
-            ),
+            .clickable(onClick = onClicked),
         shape = RoundedCornerShape(14.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
-                .padding(14.dp)
+                .padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isTopThree) platform.brandColor.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (rank <= 3) {
-                                Brush.linearGradient(
-                                    colors = listOf(rankColor, rankColor.copy(alpha = 0.7f))
-                                )
-                            } else {
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                )
-                            }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = rank.toString(),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.ExtraBold
-                        ),
-                        color = if (rank <= 3) Color.White else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 22.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = if (isExpanded) 5 else 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    val displayDesc = item.desc?.trim()
-                    if (!displayDesc.isNullOrBlank() && displayDesc != "-" && displayDesc != "\u8BE5\u89C6\u9891\u6682\u65E0\u7B80\u4ECB") {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = displayDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            maxLines = if (isExpanded) 10 else 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = platform.displayName,
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = platform.brandColor.copy(alpha = 0.7f)
-                        )
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (!item.hot.isNullOrBlank()) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_whatshot),
-                                    contentDescription = "\u70ED\u5EA6",
-                                    tint = platform.brandColor,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = formatHotNumber(item.hot),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            IconButton(
-                                onClick = onCopy,
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_content_copy),
-                                    contentDescription = "\u590D\u5236\u6587\u5B57",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
+                Text(
+                    text = rank.toString(),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = if (isTopThree) platform.brandColor else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    modifier = Modifier.padding(end = 10.dp),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 22.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                val displayDesc = item.desc?.trim()
+                if (!displayDesc.isNullOrBlank() && displayDesc != "-" && displayDesc != "\u8BE5\u89C6\u9891\u6682\u65E0\u7B80\u4ECB") {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = displayDesc,
+                        modifier = Modifier.padding(end = 10.dp),
+                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onCopy) {
+                    if (!item.hot.isNullOrBlank()) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_content_copy),
-                            contentDescription = "\u590D\u5236\u94FE\u63A5",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            painter = painterResource(R.drawable.ic_whatshot),
+                            contentDescription = "\u70ED\u5EA6",
+                            tint = platform.brandColor.copy(alpha = 0.8f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = formatHotNumber(item.hot),
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = onShare) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    IconButton(onClick = onCopy, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_content_copy),
+                            contentDescription = "\u590D\u5236\u6807\u9898\u548C\u94FE\u63A5",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(onClick = onShare, modifier = Modifier.size(40.dp)) {
                         Icon(
                             painter = painterResource(R.drawable.ic_share),
-                            contentDescription = "\u5206\u4EAB\u70ED\u70B9",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            contentDescription = "\u5206\u4EAB",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -532,18 +479,19 @@ fun ErrorStateView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "\u6293\u53D6\u9047\u5230\u5F02\u5E38",
+            text = "\u52A0\u8F7D\u5931\u8D25",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            maxLines = 6,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(bottom = 20.dp)
         )
-        
         Surface(
             modifier = Modifier
                 .height(44.dp)
@@ -565,7 +513,7 @@ fun ErrorStateView(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "\u91CD\u65B0\u52A0\u8F7D\u6570\u636E",
+                    text = "\u91CD\u65B0\u52A0\u8F7D",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )

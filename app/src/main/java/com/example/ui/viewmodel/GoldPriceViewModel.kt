@@ -146,7 +146,9 @@ class GoldPriceViewModel : ViewModel() {
         val validMetals = rawMetals.filter { it.isPlausibleQuote() }
         if (validMetals.size * 2 < rawMetals.size) return null
 
-        val metals = validMetals.map { it.toMarketEntry() }.distinctBy { it.name }
+        // 60s 会用不同名称返回同一组报价（如「今日金价」与「黄金价格」），按报价内容去重，只保留第一条
+        val metals = validMetals.map { it.toMarketEntry() }
+            .distinctBy { listOf(it.sellPrice, it.openPrice, it.highPrice, it.lowPrice, it.unit) }
         val domestic = metals.filter { it.unit.trim() == UNIT_CNY_PER_GRAM }
         val international = metals.filter { it.unit.contains("\u7F8E\u5143") }
         if (domestic.isEmpty() && international.isEmpty()) return null
@@ -262,7 +264,7 @@ class GoldPriceViewModel : ViewModel() {
         val sellPrice = clean("sell_price", "0")
         val openPrice = clean("today_price", "0")
         return GoldMarketEntry(
-            name = clean("name", "\u672A\u77E5\u54C1\u79CD"),
+            name = clean("name", "\u672A\u77E5\u54C1\u79CD").replace("_", " "),
             sellPrice = formatPrice(sellPrice),
             openPrice = formatPrice(openPrice),
             highPrice = formatPrice(clean("high_price", "0")),
@@ -280,6 +282,8 @@ class GoldPriceViewModel : ViewModel() {
     }
 
     private fun formatChangeRate(rate: Double): String {
+        // 变化不足 0.01% 视为持平，不显示箭头，避免把 0.00% 显示成上涨
+        if (rate.isNaN() || kotlin.math.abs(rate) < 0.005) return "0.00%"
         val arrow = if (rate >= 0) "\u2191" else "\u2193"
         return "$arrow${String.format(Locale.getDefault(), "%.2f", kotlin.math.abs(rate))}%"
     }

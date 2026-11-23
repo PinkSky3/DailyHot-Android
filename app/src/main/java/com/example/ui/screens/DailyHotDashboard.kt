@@ -1,6 +1,6 @@
 package com.example.ui.screens
 
-import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -27,16 +27,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,32 +47,30 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.AppUpdate
 import com.example.data.model.HotPlatform
 import com.example.data.model.PlatformCategory
+import com.example.ui.theme.AppSkin
+import com.example.ui.theme.isDark
 import com.example.ui.viewmodel.GoldPriceViewModel
 import com.example.ui.viewmodel.HotSearchViewModel
-import com.example.ui.viewmodel.OilPriceViewModel
 import com.example.ui.viewmodel.News60sViewModel
+import com.example.ui.viewmodel.OilPriceViewModel
 import com.example.ui.viewmodel.UiState
 import com.example.ui.viewmodel.WeatherAlertViewModel
 
@@ -80,11 +80,11 @@ enum class DashboardMode(
     val emoji: String,
     val color: Color
 ) {
-    NEWS_60S("60S", "60秒读世界", "📰", Color(0xFF2196F3)),
-    HOT_SEARCH("热搜", "多平台热搜", "", Color(0xFFFF6B35)),
-    WEATHER_ALERT("预警", "气象预警", "⚠️", Color(0xFF00ACC1)),
-    OIL_PRICE("油价", "油价查询", "⛽", Color(0xFFFF6B35)),
-    GOLD_PRICE("金价", "金价查询", "🪙", Color(0xFFD4A017));
+    NEWS_60S("60\u79D2", "60\u79d2\u8bfb\u4e16\u754c", "\ud83d\udcf0", Color(0xFF2196F3)),
+    HOT_SEARCH("\u70ed\u641c", "\u591a\u5e73\u53f0\u70ed\u641c", "", Color(0xFFFF6B35)),
+    WEATHER_ALERT("\u9884\u8b66", "\u6c14\u8c61\u9884\u8b66", "\u26a0\ufe0f", Color(0xFF00ACC1)),
+    OIL_PRICE("\u6cb9\u4ef7", "\u6cb9\u4ef7\u67e5\u8be2", "\u26fd", Color(0xFFFF6B35)),
+    GOLD_PRICE("\u91d1\u4ef7", "\u91d1\u4ef7\u67e5\u8be2", "\ud83e\ude99", Color(0xFFD4A017));
 
     fun accentColor(activePlatform: HotPlatform): Color =
         if (this == HOT_SEARCH) activePlatform.brandColor else color
@@ -100,14 +100,16 @@ fun DailyHotDashboard(
     goldViewModel: GoldPriceViewModel,
     news60sViewModel: News60sViewModel,
     weatherAlertViewModel: WeatherAlertViewModel,
-    isDarkTheme: Boolean = false,
-    onToggleTheme: () -> Unit = {},
+    skin: AppSkin = AppSkin.SYSTEM,
+    onSkinChange: (AppSkin) -> Unit = {},
     versionLabel: String = "",
     onCheckUpdate: () -> Unit = {},
     availableUpdate: AppUpdate? = null,
+    isResolvingMirror: Boolean = false,
     onDismissUpdate: () -> Unit = {},
     onIgnoreUpdate: () -> Unit = {},
-    onDownloadUpdate: (String) -> Unit = {},
+    onMirrorDownload: () -> Unit = {},
+    onGithubDownload: () -> Unit = {},
     onBackupDownload: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -123,13 +125,12 @@ fun DailyHotDashboard(
     var selectedPlatformCategory by rememberSaveable { mutableStateOf(PlatformCategory.ALL) }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    // Web view preview state
+    // 内置浏览器预览状态
     var previewUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var previewTitle by rememberSaveable { mutableStateOf<String?>(null) }
 
-    // Floating action rotation animation state
+    // 刷新按钮旋转动画
     var isRotating by remember { mutableStateOf(false) }
     val rotationAngle by animateFloatAsState(
         targetValue = if (isRotating) 360f else 0f,
@@ -137,7 +138,7 @@ fun DailyHotDashboard(
         finishedListener = { isRotating = false }
     )
 
-    // Back handler to close native WebView preview
+    // 预览打开时，返回键先关闭预览（网页内有历史时由预览页自行后退）
     if (previewUrl != null) {
         BackHandler {
             previewUrl = null
@@ -153,18 +154,6 @@ fun DailyHotDashboard(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = innerPadding.calculateBottomPadding())
-                .drawBehind {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                activePlatform.brandColor.copy(alpha = 0.04f),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width / 2f, 200f),
-                            radius = size.width * 0.8f
-                        )
-                    )
-                }
         ) {
             Column(
                 modifier = Modifier
@@ -174,8 +163,8 @@ fun DailyHotDashboard(
                 HeaderSection(
                     activePlatform = activePlatform,
                     mode = mode,
-                    isDarkTheme = isDarkTheme,
-                    onToggleTheme = onToggleTheme,
+                    skin = skin,
+                    onSkinChange = onSkinChange,
                     versionLabel = versionLabel,
                     onCheckUpdate = onCheckUpdate,
                     onModeChange = { mode = it },
@@ -236,13 +225,19 @@ fun DailyHotDashboard(
                                         items = state.items,
                                         updateTime = state.updateTime,
                                         onItemClicked = { item ->
-                                            if (item.url != null) {
+                                            if (item.url.isNullOrBlank()) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "\u8FD9\u6761\u70ED\u641C\u6CA1\u6709\u53EF\u6253\u5F00\u7684\u94FE\u63A5",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
                                                 previewUrl = item.url
                                                 previewTitle = item.title
                                             }
                                         },
                                         onCopyItem = { item ->
-                                            copyToClipboard(context, item.title + " " + (item.url ?: ""))
+                                            copyToClipboard(context, listOfNotNull(item.title, item.url).joinToString(" "))
                                         },
                                         onShareItem = { item ->
                                             shareText(context, "\u3010\u805A\u5408\u70ED\u641C\u00B7${activePlatform.displayName}\u3011${item.title}\uFF1A${item.url ?: ""}")
@@ -280,11 +275,11 @@ fun DailyHotDashboard(
                 visible = previewUrl != null,
                 enter = slideInVertically(
                     initialOffsetY = { it },
-                    animationSpec = tween(durationMillis = 350)
+                    animationSpec = tween(durationMillis = 300)
                 ) + fadeIn(),
                 exit = slideOutVertically(
                     targetOffsetY = { it },
-                    animationSpec = tween(durationMillis = 300)
+                    animationSpec = tween(durationMillis = 250)
                 ) + fadeOut()
             ) {
                 if (previewUrl != null) {
@@ -299,27 +294,32 @@ fun DailyHotDashboard(
                     )
                 }
             }
-
         }
     }
 
     availableUpdate?.let { update ->
         UpdateAvailableDialog(
             update = update,
+            isResolvingMirror = isResolvingMirror,
             onDismiss = onDismissUpdate,
             onIgnore = onIgnoreUpdate,
-            onDownload = { onDownloadUpdate(update.downloadUrl) },
+            onMirrorDownload = onMirrorDownload,
+            onGithubDownload = onGithubDownload,
             onBackupDownload = onBackupDownload
         )
     }
 }
 
+/**
+ * 顶部栏：左侧应用名和版本号（点击检查更新），右侧皮肤和刷新按钮，下方为页面切换栏。
+ * 当前页面已在切换栏中高亮，不再在标题旁重复显示。
+ */
 @Composable
 fun HeaderSection(
     activePlatform: HotPlatform,
     mode: DashboardMode,
-    isDarkTheme: Boolean = false,
-    onToggleTheme: () -> Unit = {},
+    skin: AppSkin = AppSkin.SYSTEM,
+    onSkinChange: (AppSkin) -> Unit = {},
     versionLabel: String = "",
     onCheckUpdate: () -> Unit = {},
     onModeChange: (DashboardMode) -> Unit,
@@ -327,9 +327,10 @@ fun HeaderSection(
     rotationAngle: Float,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier
-        .fillMaxWidth()
-        .padding(horizontal = 20.dp, vertical = 12.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -342,14 +343,14 @@ fun HeaderSection(
             ) {
                 Text(
                     text = "\u805A\u5408\u667A\u8BAF",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Black,
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.width(6.dp))
                 if (versionLabel.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(8.dp))
                     Surface(
                         onClick = onCheckUpdate,
                         shape = RoundedCornerShape(6.dp),
@@ -362,60 +363,24 @@ fun HeaderSection(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(mode.accentColor(activePlatform).copy(alpha = 0.15f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = mode.badge(activePlatform),
-                        fontSize = 12.sp
-                    )
-                }
-                Text(
-                    text = mode.title,
-                    modifier = Modifier.padding(start = 8.dp),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        letterSpacing = 0.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onToggleTheme,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface)
-                ) {
-                    Icon(
-                        painter = painterResource(if (isDarkTheme) R.drawable.ic_light_mode else R.drawable.ic_dark_mode),
-                        contentDescription = if (isDarkTheme) "切换浅色主题" else "切换深色主题",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                SkinMenuButton(skin = skin, onSkinChange = onSkinChange)
                 Spacer(modifier = Modifier.width(4.dp))
                 IconButton(
                     onClick = onRefresh,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "\u5237\u65B0",
-                        tint = mode.accentColor(activePlatform),
+                        contentDescription = "\u5237\u65B0\u5F53\u524D\u9875\u9762",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .size(20.dp)
                             .rotate(rotationAngle)
@@ -423,16 +388,50 @@ fun HeaderSection(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+        Spacer(modifier = Modifier.height(10.dp))
+        ModeToggle(
+            mode = mode,
+            onModeChange = onModeChange
+        )
+    }
+}
+
+@Composable
+private fun SkinMenuButton(
+    skin: AppSkin,
+    onSkinChange: (AppSkin) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier
+                .size(44.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
         ) {
-            ModeToggle(
-                mode = mode,
-                onModeChange = onModeChange
+            Icon(
+                painter = painterResource(if (skin.isDark()) R.drawable.ic_dark_mode else R.drawable.ic_light_mode),
+                contentDescription = "\u5207\u6362\u76AE\u80A4\uFF0C\u5F53\u524D\uFF1A${skin.label}",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            AppSkin.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(text = option.label) },
+                    leadingIcon = { RadioButton(selected = option == skin, onClick = null) },
+                    onClick = {
+                        expanded = false
+                        if (option != skin) onSkinChange(option)
+                    }
+                )
+            }
         }
     }
 }
@@ -446,16 +445,15 @@ fun ModeToggle(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(10.dp)),
+            .height(44.dp),
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .selectableGroup()
-                .padding(horizontal = 3.dp, vertical = 3.dp),
+                .padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -471,6 +469,7 @@ fun ModeToggle(
     }
 }
 
+/** 选中项使用卡片底色 + 细边框 + 加粗文字，各皮肤下对比度一致，不使用大面积彩色块。 */
 @Composable
 private fun ModeToggleItem(
     option: DashboardMode,
@@ -479,30 +478,33 @@ private fun ModeToggleItem(
     modifier: Modifier = Modifier
 ) {
     val bg by animateColorAsState(
-        targetValue = if (selected) option.color else Color.Transparent,
-        animationSpec = tween(durationMillis = 200)
+        targetValue = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+        animationSpec = tween(durationMillis = 150)
     )
     val content by animateColorAsState(
-        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 200)
+        targetValue = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 150)
     )
+    val borderColor = if (selected) MaterialTheme.colorScheme.outlineVariant else Color.Transparent
 
     Box(
         modifier = modifier
             .fillMaxHeight()
             .clip(RoundedCornerShape(8.dp))
             .background(bg)
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
             .selectable(
                 selected = selected,
                 onClick = onSelected,
                 role = Role.Tab
-            )
-            .padding(horizontal = 11.dp),
+            ),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = option.shortLabel,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+            ),
             color = content,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

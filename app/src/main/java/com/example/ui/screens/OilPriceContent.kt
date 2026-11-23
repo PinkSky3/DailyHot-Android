@@ -91,7 +91,7 @@ fun OilPriceContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 96.dp)
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
                 ) {
                     item {
                         Card(

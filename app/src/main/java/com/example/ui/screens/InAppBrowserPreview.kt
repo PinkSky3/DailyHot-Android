@@ -53,6 +53,26 @@ fun InAppBrowserPreview(
     var webProgress by remember { mutableStateOf(0f) }
     var rootWebView by remember { mutableStateOf<WebView?>(null) }
 
+    // 返回键：网页有上一页时先后退，没有时才关闭预览
+    androidx.activity.compose.BackHandler {
+        val webView = rootWebView
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            onClose()
+        }
+    }
+
+    // 关闭预览时释放 WebView，避免后台继续播放视频或占用内存
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            rootWebView?.apply {
+                stopLoading()
+                destroy()
+            }
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background

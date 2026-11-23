@@ -275,7 +275,12 @@ private fun GoldMarketCard(
                     Text(
                         text = entry.changeRate,
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (entry.changeRate.startsWith("\u2193")) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+                        // 国内习惯：涨红跌绿，持平用中性色
+                        color = when {
+                            entry.changeRate.startsWith("\u2191") -> Color(0xFFD32F2F)
+                            entry.changeRate.startsWith("\u2193") -> Color(0xFF2E7D32)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
             }
@@ -378,7 +383,7 @@ private fun GoldBankRecycleCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${entry.type}  ${entry.updated}",
+                    text = listOf(entry.type, entry.updated).filter { it.isNotBlank() }.joinToString(" \u00B7 "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                     maxLines = 1,

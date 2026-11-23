@@ -79,24 +79,41 @@ fun News60sContent(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(start = 4.dp, end = 4.dp, bottom = 96.dp),
+                        .padding(start = 12.dp, end = 12.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // 顶部信息行：左侧显示日期和条数，右侧是带文字的「复制全部」按钮
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.End,
+                            .padding(start = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
+                        Text(
+                            text = listOfNotNull(
+                                state.updateTime?.takeIf { it.isNotBlank() },
+                                "\u5171 ${state.newsList.size} \u6761"
+                            ).joinToString(" \u00B7 "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.weight(1f)
+                        )
+                        androidx.compose.material3.TextButton(
                             onClick = { copyToClipboard(context, allNewsText) },
                             enabled = allNewsText.isNotBlank()
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_content_copy),
-                                contentDescription = "\u4E00\u952E\u590D\u523660\u79D2\u5168\u90E8\u65B0\u95FB",
-                                tint = Color(0xFF2196F3)
+                                contentDescription = null,
+                                tint = Color(0xFF2196F3),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "\u590D\u5236\u5168\u90E8",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color(0xFF2196F3)
                             )
                         }
                     }

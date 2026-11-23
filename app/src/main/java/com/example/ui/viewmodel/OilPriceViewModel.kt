@@ -1,6 +1,8 @@
 package com.example.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.FallbackFetchResult
 import com.example.data.api.RetrofitClient
@@ -8,6 +10,7 @@ import com.example.data.api.fetchFirstParsed
 import com.example.data.api.lastErrorSuffix
 import com.example.data.model.OilPriceEntry
 import com.example.data.model.OilPriceRootResponse
+import com.example.data.model.PROVINCES
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,11 +63,19 @@ private const val LABEL_95 = "95#\u6C7D\u6CB9"
 private const val LABEL_98 = "98#\u6C7D\u6CB9"
 private const val LABEL_0 = "0#\u67F4\u6CB9"
 
-class OilPriceViewModel : ViewModel() {
+private const val OIL_PREFS = "oil_price_settings"
+private const val KEY_PROVINCE = "province"
+private const val DEFAULT_PROVINCE = "\u6D59\u6C5F"
+
+class OilPriceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val responseAdapter = RetrofitClient.moshi.adapter(OilPriceRootResponse::class.java)
+    private val prefs = application.getSharedPreferences(OIL_PREFS, Context.MODE_PRIVATE)
 
-    private val _selectedProvince = MutableStateFlow("浙江")
+    // 记住上次选择的省份，下次打开不用重新选
+    private val _selectedProvince = MutableStateFlow(
+        prefs.getString(KEY_PROVINCE, null)?.takeIf { it in PROVINCES } ?: DEFAULT_PROVINCE
+    )
     val selectedProvince: StateFlow<String> = _selectedProvince.asStateFlow()
 
     private val _uiState = MutableStateFlow<OilPriceUiState>(OilPriceUiState.Loading)
@@ -78,6 +89,7 @@ class OilPriceViewModel : ViewModel() {
 
     fun selectProvince(province: String) {
         _selectedProvince.value = province
+        prefs.edit().putString(KEY_PROVINCE, province).apply()
         fetchOilPrice()
     }
 

@@ -5,6 +5,8 @@ import kotlinx.coroutines.CancellationException
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.Streaming
 import retrofit2.http.Url
 
 interface PublicApiService {
@@ -13,6 +15,11 @@ interface PublicApiService {
 
     @GET
     suspend fun fetchWeather(@Url url: String): Response<WeatherAlertResponse>
+
+    /** 探测下载线路是否可用：配合 Range 头只取少量字节，Streaming 避免把响应体读进内存。 */
+    @Streaming
+    @GET
+    suspend fun probe(@Url url: String, @Header("Range") range: String): Response<ResponseBody>
 }
 
 internal data class EndpointFailure(

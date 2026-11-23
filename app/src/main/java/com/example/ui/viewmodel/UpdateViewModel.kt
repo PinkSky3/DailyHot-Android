@@ -24,7 +24,17 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     val availableUpdate: StateFlow<AppUpdate?> = _availableUpdate.asStateFlow()
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    /** 需要用浏览器打开的下载地址。 */
+    private val _openUrlEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val openUrlEvents: SharedFlow<String> = _openUrlEvents.asSharedFlow()
+
+    /** 正在探测国内直链线路时为 true，弹窗按钮据此显示「正在连接」。 */
+    private val _isResolvingMirror = MutableStateFlow(false)
+    val isResolvingMirror: StateFlow<Boolean> = _isResolvingMirror.asStateFlow()
+
     private var checkJob: Job? = null
+    private var mirrorJob: Job? = null
 
     init {
         checkForUpdate(manual = false)
@@ -35,14 +45,44 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissUpdate() {
+        mirrorJob?.cancel()
+        _isResolvingMirror.value = false
         _availableUpdate.value = null
     }
 
     fun ignoreUpdate() {
         val version = _availableUpdate.value?.version ?: return
         preferences.edit().putString(KEY_IGNORED_VERSION, version).apply()
-        _availableUpdate.value = null
+        dismissUpdate()
         _messages.tryEmit("已忽略版本 $version")
+    }
+
+    /** 国内直链：依次探测 gh-proxy 线路，用第一条能连通的线路下载。 */
+    fun downloadFromMirror() {
+        val update = _availableUpdate.value ?: return
+        if (_isResolvingMirror.value) return
+        mirrorJob = viewModelScope.launch {
+            _isResolvingMirror.value = true
+            try {
+                val url = repository.resolveMirrorDownload(update)
+                if (url != null) {
+                    _availableUpdate.value = null
+                    _openUrlEvents.emit(url)
+                } else {
+                    _messages.emit("国内线路暂时无法连接，请改用 GitHub 原站或蓝奏云下载")
+                }
+            } finally {
+                _isResolvingMirror.value = false
+            }
+        }
+    }
+
+    /** GitHub 原站：直接打开 Release 中的安装包地址，不经过加速线路。 */
+    fun downloadFromGithub() {
+        val update = _availableUpdate.value ?: return
+        val url = update.githubDownloadUrl.ifBlank { update.releasePageUrl }
+        dismissUpdate()
+        _openUrlEvents.tryEmit(url)
     }
 
     private fun checkForUpdate(manual: Boolean) {
