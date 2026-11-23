@@ -28,7 +28,7 @@
 
 - 查询 **全国 31 个省/自治区/直辖市** 最新油价
 - 支持 **92#、95#、98# 汽油** 和 **0# 柴油**
-- 数据来源：60s API，内置 AA1/NXVAV 公开接口兜底
+- 数据来源：60s API，内置 NXVAV、QQSUU、XXAPI 公开接口兜底（均为大陆可直连）
 - 自动定位省份，切换即查
 
 ### 实时金价
@@ -48,7 +48,7 @@
 
 ## 版本
 
-当前版本：`1.3.1`
+当前版本：`1.3.2`
 
 具体变化见 [更新日志](CHANGELOG.md)。
 
@@ -69,8 +69,9 @@ app/build/outputs/apk/debug/app-debug.apk
 ## 数据来源
 
 - 热搜聚合：`dailyhotapi.3yu3.top`
-- 60 秒新闻 / 油价：`60s.viki.moe` 及公开备用实例，油价额外兜底 `api.nxvav.cn`
-- 金价：`tmini.net`、`api.freejk.com`、`v2.xxapi.cn`
+- 60 秒新闻：`60s.viki.moe` 及公开备用实例
+- 油价：`60s.viki.moe`、`api.nxvav.cn`、`60s.crystelf.top`、`api.qqsuu.cn`、`v2.xxapi.cn`（按顺序兜底）
+- 金价：`60s.viki.moe`（主）、`push2.eastmoney.com`（兜底）、`v2.xxapi.cn`（品牌金店/银行金条/回收价）
 
 ---
 

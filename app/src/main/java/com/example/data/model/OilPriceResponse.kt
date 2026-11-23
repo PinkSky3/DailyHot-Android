@@ -14,6 +14,8 @@ data class OilPriceDataResponse(
     val trend: OilPriceTrend? = null,
     val items: List<OilPriceItem>? = null,
     val updated: String? = null,
+    /** 更新时间戳（毫秒，UTC 绝对时间），不受各实例服务器时区影响。 */
+    val updated_at: Long? = null,
     val time: String? = null,
     val next_update_time: String? = null,
     val province: OilPriceProvince? = null

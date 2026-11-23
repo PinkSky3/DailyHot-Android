@@ -10,7 +10,7 @@
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-& '.github/scripts/publish-confirmed-release.ps1' -Version '1.3.1' -ConfirmedByUser
+& '.github/scripts/publish-confirmed-release.ps1' -Version '1.3.2' -ConfirmedByUser
 ```
 
 脚本会把草稿转成稳定正式版，验证 GitHub 的 `releases/latest` 已指向该版本，再强制刷新专用的 `release-channel` 分支。该分支只保留确认后的 `update.json` 和签名 APK，应用通过 jsDelivr 下载，Raw GitHub 只作清单备用；普通 Actions 构建和未确认草稿不会改动这个分支。GitHub Release 内部使用 `JuHeZhiXun_ver版本号.apk`，大陆下载仍保存为 `聚合智讯_ver版本号.apk`。
